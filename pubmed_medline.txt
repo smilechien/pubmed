@@ -1,0 +1,2934 @@
+
+PMID- 41908069
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20260331
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 31
+DP  - 2025 Sep
+TI  - scSpatialSIM: a simulator of spatial single-cell molecular data.
+LID - 102223 [pii]
+LID - 10.1016/j.softx.2025.102223 [doi]
+AB  - The increasing use of spatial molecular technologies such as multiplex 
+      immunofluorescence (mIF) and spatial transcriptomics (SRT) has driven the need 
+      for robust statistical methods to analyze the spatial architecture of tissues. 
+      However, a lack of consensus on "gold standard" approaches present challenges for 
+      benchmarking and comparison. To address this gap, we developed "scSpatialSIM", an 
+      R package for simulating biologically realistic spatial single-cell molecular 
+      data. "scSpatialSIM" enables users to efficiently simulate single-cell spatial 
+      patterns without requiring reference datasets, incorporating features such as 
+      cell clustering, cell co-localization, tissue compartments, and tissue holes. 
+      Additionally, the package supports simulation of both categorical data (e.g., 
+      cell phenotypes) and continuous values (e.g., protein expression or gene 
+      expression), and integrates with other R packages for downstream spatial 
+      analyses. To demonstrate its utility, we applied "scSpatialSIM" to benchmark 
+      univariate point pattern summary functions, including Ripley's K(r), nearest 
+      neighbor G(r), and pair correlation g (r), across simulated scenarios. The 
+      results showed that Ripley's K(r) consistently detected clustering across 
+      multiple radii, outperforming other methods in sensitivity and robustness. While 
+      scSpatialSIM is limited to simulating cell clustering and co-localization rather 
+      than broader tissue-level sub-domains, it provides a flexible and scalable 
+      framework for generating diverse spatial data. The development of scSpatialSIM 
+      facilitates comparative evaluation of spatial statistics and enables researchers 
+      to explore hypothetical scenarios at scale, advancing the development of novel 
+      methods to characterize the spatial organization of tissues. By providing a 
+      platform for spatial simulation, scSpatialSIM supports innovation in spatial 
+      molecular research and fosters new insights into tissue architecture and cellular 
+      interactions.
+FAU - Soupir, Alex C
+AU  - Soupir AC
+AUID- ORCID: 0000-0003-1251-9179
+AD  - Department of Biostatistics and Bioinformatics, Moffitt Cancer Center, Tampa, FL, 
+      United States.
+AD  - Department of Genitourinary Oncology, Moffitt Cancer Center, Tampa, FL, United 
+      States.
+FAU - Wrobel, Julia
+AU  - Wrobel J
+AD  - Department of Biostatistics, Emory University, Atlanta, GA, United States.
+FAU - Creed, Jordan H
+AU  - Creed JH
+AD  - Department of Biostatistics and Bioinformatics, Moffitt Cancer Center, Tampa, FL, 
+      United States.
+FAU - Ospina, Oscar E
+AU  - Ospina OE
+AD  - Department of Biostatistics and Bioinformatics, Moffitt Cancer Center, Tampa, FL, 
+      United States.
+FAU - Wilson, Christopher M
+AU  - Wilson CM
+AD  - Department of Biostatistics and Bioinformatics, Moffitt Cancer Center, Tampa, FL, 
+      United States.
+FAU - Manley, Brandon J
+AU  - Manley BJ
+AD  - Department of Biostatistics, Emory University, Atlanta, GA, United States.
+FAU - Peres, Lauren C
+AU  - Peres LC
+AD  - Department of Cancer Epidemiology, Moffitt Cancer Center, Tampa, FL, United 
+      States.
+FAU - Fridley, Brooke L
+AU  - Fridley BL
+AD  - Division of Health Services and Outcomes Research, Children's Mercy, Kansas City, 
+      MO, United States.
+LA  - eng
+GR  - R01 CA279065/CA/NCI NIH HHS/United States
+GR  - U01 CA274489/CA/NCI NIH HHS/United States
+PT  - Journal Article
+DEP - 20250606
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC13021152
+MID - NIHMS2153710
+OTO - NOTNLM
+OT  - Cell clustering
+OT  - Cell co-localization
+OT  - Spatial molecular data
+OT  - Spatial single-cell simulations
+OT  - Spatial statistics benchmarking
+EDAT- 2026/03/30 12:48
+MHDA- 2026/03/30 12:49
+PMCR- 2026/03/27
+CRDT- 2026/03/30 06:23
+PHST- 2026/03/30 12:49 [medline]
+PHST- 2026/03/30 12:48 [pubmed]
+PHST- 2026/03/30 06:23 [entrez]
+PHST- 2026/03/27 00:00 [pmc-release]
+AID - 102223 [pii]
+AID - 10.1016/j.softx.2025.102223 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 Sep;31:102223. doi: 10.1016/j.softx.2025.102223. Epub 2025 Jun 6.
+
+PMID- 41048402
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20260418
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 31
+DP  - 2025 Sep
+TI  - HistomicsTK: A Python toolkit for pathology image analysis algorithms.
+LID - 102318 [pii]
+LID - 10.1016/j.softx.2025.102318 [doi]
+AB  - Growth in the digital imaging of glass tissue slides has produced petabytes of 
+      data, however, this data remains underutilized in biomedical research due in part 
+      to a lack of open-source software. HistomicsTK is an open-source Python package 
+      that provides preprocessing, segmentation, and feature extraction capabilities 
+      for building histology image processing pipelines. HistomicsTK can function as a 
+      standalone Python package or serve containerized pipelines through a web-based 
+      interface using the Digital Slide Archive platform. This paper provides an 
+      overview of HistomicsTK with illustrative use cases and describes how this 
+      project engages the community in software development and maintenance.
+FAU - Pourakpour, Fattaneh
+AU  - Pourakpour F
+AUID- ORCID: 0009-0009-5049-9704
+AD  - Department of Electrical Engineering, McCormick School of Engineering, 
+      Northwestern University, USA.
+FAU - Szolgyen, Akos
+AU  - Szolgyen A
+AD  - Department of Pathology, Feinberg School of Medicine, Northwestern University, 
+      USA.
+AD  - Chan Zuckerberg Chicago Biohub, USA.
+FAU - Nateghi, Ramin
+AU  - Nateghi R
+AD  - Department of Urology, Feinberg School of Medicine, Northwestern University, USA.
+FAU - Gutman, David A
+AU  - Gutman DA
+AD  - Department of Pathology, Emory School of Medicine, Emory University, USA.
+FAU - Manthey, David
+AU  - Manthey D
+AD  - Kitware, Inc., USA.
+FAU - Cooper, Lee Ad
+AU  - Cooper LA
+AD  - Department of Pathology, Feinberg School of Medicine, Northwestern University, 
+      USA.
+AD  - Chan Zuckerberg Chicago Biohub, USA.
+LA  - eng
+GR  - U01 CA220401/CA/NCI NIH HHS/United States
+GR  - U54 CA302435/CA/NCI NIH HHS/United States
+GR  - P50 CA180995/CA/NCI NIH HHS/United States
+GR  - U24 NS133949/NS/NINDS NIH HHS/United States
+GR  - U24 CA194362/CA/NCI NIH HHS/United States
+GR  - R01 LM013523/LM/NLM NIH HHS/United States
+PT  - Journal Article
+DEP - 20250822
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC12494233
+MID - NIHMS2112478
+OTO - NOTNLM
+OT  - Digital pathology
+OT  - Image analysis
+OT  - Medical imaging
+OT  - Microscopy
+OT  - Pathology
+EDAT- 2025/10/06 12:31
+MHDA- 2025/10/06 12:32
+PMCR- 2025/10/04
+CRDT- 2025/10/06 07:06
+PHST- 2025/10/06 12:32 [medline]
+PHST- 2025/10/06 12:31 [pubmed]
+PHST- 2025/10/06 07:06 [entrez]
+PHST- 2025/10/04 00:00 [pmc-release]
+AID - 102318 [pii]
+AID - 10.1016/j.softx.2025.102318 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 Sep;31:102318. doi: 10.1016/j.softx.2025.102318. Epub 2025 Aug 
+      22.
+
+PMID- 41036414
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20251004
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 31
+DP  - 2025 Sep
+TI  - SWCRTsimulator: A simulation-based platform for power estimation in stepped wedge 
+      cluster randomized trials with interval-censored outcomes.
+LID - 102288 [pii]
+LID - 10.1016/j.softx.2025.102288 [doi]
+AB  - Stepped wedge cluster randomized trials (SWCRTs) have become increasingly popular 
+      across various disciplines, particularly in public health and clinical research, 
+      as they allow evaluations of interventions rolled out sequentially across 
+      clusters. SWCRTsimulator is a user-friendly, web-based RShiny application 
+      designed to facilitate sample size and statistical power estimation for an 
+      interval-censored time-to-event outcome in a SWCRT. Leveraging Monte Carlo 
+      simulations, the platform accommodates various study design features, including 
+      heterogeneity in intervention effect across different clusters, to provide a more 
+      accurate and reliable statistical approach to sample size and power estimates as 
+      compared to the approximate methods based on study design features when a 
+      closed-form solution is not feasible. SWCRTsimulator provides customizable 
+      visualizations for simulation results. We also illustrate the practical 
+      application of this platform using the Sankofa 2 trial, an active multi-clinic 
+      SWCRT of a pediatric HIV disclosure intervention in Ghana, underscoring the 
+      importance of accounting for real-world complexities in the design and analysis 
+      of such trials.
+FAU - Lu, Xintong
+AU  - Lu X
+AUID- ORCID: 0009-0000-7058-0192
+AD  - Yale School of Public Health, Department of Biostatistics, New Haven, CT, USA.
+FAU - Kennedy-Shaffer, Lee
+AU  - Kennedy-Shaffer L
+AD  - Yale School of Public Health, Department of Biostatistics, New Haven, CT, USA.
+FAU - Shabanova, Veronika
+AU  - Shabanova V
+AD  - Yale School of Public Health, Department of Biostatistics, New Haven, CT, USA.
+AD  - Yale School of Medicine, Department of Pediatrics, New Haven, CT, USA.
+LA  - eng
+GR  - R01 HD103512/HD/NICHD NIH HHS/United States
+PT  - Journal Article
+DEP - 20250807
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC12483528
+MID - NIHMS2112476
+OTO - NOTNLM
+OT  - Cluster randomized trials
+OT  - Power estimation
+OT  - RShiny
+OT  - Stepped wedge design
+OT  - Survival analysis
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2025/10/02 06:28
+MHDA- 2025/10/02 06:29
+PMCR- 2025/10/01
+CRDT- 2025/10/02 04:59
+PHST- 2025/10/02 06:29 [medline]
+PHST- 2025/10/02 06:28 [pubmed]
+PHST- 2025/10/02 04:59 [entrez]
+PHST- 2025/10/01 00:00 [pmc-release]
+AID - 102288 [pii]
+AID - 10.1016/j.softx.2025.102288 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 Sep;31:102288. doi: 10.1016/j.softx.2025.102288. Epub 2025 Aug 7.
+
+PMID- 40546755
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20260323
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 30
+DP  - 2025 Mar 22
+TI  - ContDataQC: An R package and Shiny app for quality control of continuous water 
+      quality sensor data.
+PG  - 102124
+LID - 10.1016/j.softx.2025.102124 [doi]
+AB  - The ContDataQC R package is a free, open-source tool that was developed to help 
+      water quality monitoring programs perform quality control (QC) procedures on 
+      continuous sensor data. ContDataQC helps users speed up and standardize the QC 
+      process, minimize undetected data errors, and make full use of their sensor data. 
+      It has three main functions: generate QC reports to detect anomalies and 
+      erroneous data values, merge QC'd data files from different time periods, and 
+      generate time series plots and basic summary statistics. ContDataQC is currently 
+      configured to run on nine different parameters: air and water temperature, 
+      dissolved oxygen, conductivity, chlorophyll-a, air and water pressure, sensor 
+      depth, pH, turbidity, and salinity. Users can add new parameters and customize 
+      many of the requirements by editing a plain text configuration file. A web app 
+      version, through R Shiny, is available within the package or via a weblink. If 
+      accessed via the URL, it will not require the installation of R software. In this 
+      paper, we describe the main functions of ContDataQC and discuss how it is being 
+      applied in long-term regional monitoring networks for streams and lakes. Both the 
+      R Shiny web app and the R package are for users who have no existing workflow for 
+      sensor data and wish to adopt the approach of ContDataQC (which has a particular 
+      organizational scheme and sequential workflow). People without R coding 
+      experience can use the Shiny app, which has a more user-friendly interface, while 
+      users who are proficient in R may choose to use the code package.
+FAU - Pennino, Michael J
+AU  - Pennino MJ
+AUID- ORCID: 0000-0003-0310-0931
+AD  - U.S. Environmental Protection Agency, Office of Research and Development, Center 
+      for Public Health and Environmental Assessment, U.S. EPA, Ronald Reagan Building 
+      71277, 1300 Pennsylvania Ave., NW, MC8623R, Washington, D.C. 20004, United 
+      States.
+FAU - Stamp, Jen
+AU  - Stamp J
+AD  - Tetra Tech Center for Ecological Sciences, United States.
+FAU - Leppo, Erik W
+AU  - Leppo EW
+AD  - Tetra Tech Center for Ecological Sciences, United States.
+FAU - Gibbs, David A
+AU  - Gibbs DA
+AD  - World Resources Institute, United States.
+FAU - Bierwagen, Britta G
+AU  - Bierwagen BG
+AD  - U.S. Environmental Protection Agency, Office of Research and Development, Center 
+      for Public Health and Environmental Assessment, U.S. EPA, Ronald Reagan Building 
+      71277, 1300 Pennsylvania Ave., NW, MC8623R, Washington, D.C. 20004, United 
+      States.
+LA  - eng
+GR  - EP-C-17-031/EPA/EPA/United States
+GR  - EPA999999/ImEPA/Intramural EPA/United States
+PT  - Journal Article
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC12180758
+MID - NIHMS2073242
+OTO - NOTNLM
+OT  - Continuous monitoring data
+OT  - Open-source software
+OT  - Quality control
+OT  - R
+OT  - Sensor data
+OT  - Water quality
+COIS- Declaration of competing interest There is no conflict of interest for this 
+      article
+EDAT- 2025/06/24 10:54
+MHDA- 2025/06/24 10:55
+PMCR- 2026/03/22
+CRDT- 2025/06/23 06:01
+PHST- 2025/06/24 10:55 [medline]
+PHST- 2025/06/24 10:54 [pubmed]
+PHST- 2025/06/23 06:01 [entrez]
+PHST- 2026/03/22 00:00 [pmc-release]
+AID - 10.1016/j.softx.2025.102124 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 Mar 22;30:102124. doi: 10.1016/j.softx.2025.102124.
+
+PMID- 40438663
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250531
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 30
+DP  - 2025 May
+TI  - India Policy Insights: A geospatial and temporal data science and visualization 
+      platform and architecture.
+PG  - None
+LID - 10.1016/j.softx.2025.102149 [doi]
+AB  - The Geographic Insights Lab at Harvard University developed India Policy Insights 
+      (IPI), a spatio-temporal visualization platform for policymakers. IPI provides 
+      insights from 122 indicators across population, health, and socioeconomic metrics 
+      spanning 720 districts, 543 parliamentary constituencies, and 600,000 villages in 
+      India. Its applications include breastfeeding campaigns,policy development, and 
+      government reporting. It is fully deployed on Microsoft Azure using Docker, which 
+      ensures scalability and reproducibility. Built on an open-source stack with 
+      React,.NET, and PostGIS, it processes, stores, visualizes, and queries geospatial 
+      big data. This paper highlights IPI's architecture and methodologies for tackling 
+      public policy challenges.
+CI  - (c) 2025 The Authors. Published by Elsevier B.V.
+FAU - Jain, Devika
+AU  - Jain D
+AD  - Center for Geographic Analysis, Harvard University, 1737 Cambridge Street, 
+      Cambridge, MA 02138, USA.
+FAU - Kachinovsky, Joaquin
+AU  - Kachinovsky J
+AD  - Onetree, 425 Urban Street, Kirkland, WA 98033, USA.
+FAU - Rodriguez, Gonzalo
+AU  - Rodriguez G
+AD  - Onetree, 425 Urban Street, Kirkland, WA 98033, USA.
+FAU - Chen, Junyi
+AU  - Chen J
+AD  - McCormick School of Engineering, Northwestern University, Evanston, IL, USA.
+FAU - Kim, Rockli
+AU  - Kim R
+AD  - Division of Health Policy and Management, College of Health Science, Korea 
+      University, 145 Anam-ro, Seongbuk-gu, Seoul 02841, South Korea.
+AD  - Interdisciplinary Program in Precision Public Health, Department of Public Health 
+      Sciences, Graduate School of Korea University, 145 Anam-ro, Seongbuk-gu, Seoul 
+      02841, South Korea.
+FAU - Subramanian, S V
+AU  - Subramanian SV
+AD  - Harvard Center for Population and Development Studies, 9 Bow Street, Cambridge, 
+      MA 02138, USA.
+AD  - Department of Social and Behavioral Sciences, Harvard T. H. Chan School of Public 
+      Health, 677 Huntington Avenue, Boston, MA 02115, USA.
+LA  - eng
+PT  - Journal Article
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC12106092
+OTO - NOTNLM
+OT  - .NET/React
+OT  - Azure
+OT  - Data insights
+OT  - Databases
+OT  - Docker
+OT  - ETL
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2025/05/29 11:45
+MHDA- 2025/05/29 11:46
+PMCR- 2025/05/01
+CRDT- 2025/05/29 04:44
+PHST- 2024/12/21 00:00 [received]
+PHST- 2025/03/19 00:00 [revised]
+PHST- 2025/03/24 00:00 [accepted]
+PHST- 2025/05/29 11:46 [medline]
+PHST- 2025/05/29 11:45 [pubmed]
+PHST- 2025/05/29 04:44 [entrez]
+PHST- 2025/05/01 00:00 [pmc-release]
+AID - S2352-7110(25)00116-5 [pii]
+AID - 102149 [pii]
+AID - 10.1016/j.softx.2025.102149 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 May;30:None. doi: 10.1016/j.softx.2025.102149.
+
+PMID- 40416937
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 28
+DP  - 2024 Dec
+TI  - MPAT: Modular Petri Net Assembly Toolkit.
+LID - 101913 [pii]
+LID - 10.1016/j.softx.2024.101913 [doi]
+AB  - We present a Python package called Modular Petri Net Assembly Toolkit (MPAT) that 
+      empowers users to easily create large-scale, modular Petri Nets for various 
+      spatial configurations, including extensive spatial grids or those derived from 
+      shapefiles, augmented with heterogeneous information layers. Petri Nets are 
+      powerful discrete event system modeling tools in computational biology and 
+      engineering. However, their utility for automated construction of large-scale 
+      spatial models has been limited by gaps in existing modeling software packages. 
+      MPAT addresses this gap by supporting the development of modular Petri Net models 
+      with flexible spatial geometries.
+FAU - Chiaradonna, Stefano
+AU  - Chiaradonna S
+AD  - School of Mathematical and Statistical Sciences, Arizona State University, Tempe, 
+      AZ, United States of America.
+FAU - Jevtic, Petar
+AU  - Jevtic P
+AD  - School of Mathematical and Statistical Sciences, Arizona State University, Tempe, 
+      AZ, United States of America.
+FAU - Sterner, Beckett
+AU  - Sterner B
+AD  - School of Life Sciences, Arizona State University, Tempe, AZ, United States of 
+      America.
+LA  - eng
+GR  - R01 GM152813/GM/NIGMS NIH HHS/United States
+PT  - Journal Article
+DEP - 20240924
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC12101618
+MID - NIHMS2079719
+OTO - NOTNLM
+OT  - Discrete event simulation
+OT  - Petri Nets
+OT  - Snoopy
+OT  - Spatial modeling
+OT  - Spike
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2025/05/26 12:36
+MHDA- 2025/05/26 12:37
+PMCR- 2025/05/23
+CRDT- 2025/05/26 06:08
+PHST- 2025/05/26 12:37 [medline]
+PHST- 2025/05/26 12:36 [pubmed]
+PHST- 2025/05/26 06:08 [entrez]
+PHST- 2025/05/23 00:00 [pmc-release]
+AID - 101913 [pii]
+AID - 10.1016/j.softx.2024.101913 [doi]
+PST - ppublish
+SO  - SoftwareX. 2024 Dec;28:101913. doi: 10.1016/j.softx.2024.101913. Epub 2024 Sep 
+      24.
+
+PMID- 40259923
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250424
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 29
+DP  - 2025 Feb
+TI  - PSGpower: A MATLAB toolbox for analyzing sleep EEG data.
+LID - 102076 [pii]
+LID - 10.1016/j.softx.2025.102076 [doi]
+AB  - Sleep science has seen a surge in discoveries fueled by enhanced data processing 
+      approaches to sleep physiology recordings. PSGpower is a MATLAB toolbox designed 
+      to make these processing steps more efficient and standardized. PSGpower imports 
+      sleep polysomnography data recorded using legacy and modern acquisition systems, 
+      and sleep-staged using a variety of software packages, for processing in a number 
+      of microstructure analysis workflows. Workflows include existing algorithms from 
+      EEGLAB and FieldTrip and custom algorithms. PSGpower is extensible, and new 
+      workflows can be added that take advantage of the common data importing, sleep 
+      stage marking, and preprocessing code.
+FAU - Fitzroy, Ahren B
+AU  - Fitzroy AB
+AUID- ORCID: 0000-0003-1429-5308
+AD  - University of Massachusetts, Amherst, USA.
+FAU - Spencer, Rebecca M C
+AU  - Spencer RMC
+AD  - University of Massachusetts, Amherst, USA.
+LA  - eng
+GR  - R01 AG040133/AG/NIA NIH HHS/United States
+GR  - R01 HL111695/HL/NHLBI NIH HHS/United States
+PT  - Journal Article
+DEP - 20250201
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC12011354
+MID - NIHMS2057988
+OTO - NOTNLM
+OT  - Brain activity
+OT  - EEG
+OT  - Neuroscience
+OT  - Polysomnography
+OT  - Signal processing
+OT  - Sleep
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2025/04/22 06:26
+MHDA- 2025/04/22 06:27
+PMCR- 2025/04/21
+CRDT- 2025/04/22 04:03
+PHST- 2025/04/22 06:27 [medline]
+PHST- 2025/04/22 06:26 [pubmed]
+PHST- 2025/04/22 04:03 [entrez]
+PHST- 2025/04/21 00:00 [pmc-release]
+AID - 102076 [pii]
+AID - 10.1016/j.softx.2025.102076 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 Feb;29:102076. doi: 10.1016/j.softx.2025.102076. Epub 2025 Feb 1.
+
+PMID- 39973967
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250225
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 29
+DP  - 2025 Feb
+TI  - QPPLab: A generally applicable software package for detecting, analyzing, and 
+      visualizing large-scale quasiperiodic spatiotemporal patterns (QPPs) of brain 
+      activity.
+LID - 102067 [pii]
+LID - 10.1016/j.softx.2025.102067 [doi]
+AB  - Quasi-periodic patterns (QPPs) are prominent spatiotemporal brain dynamics 
+      observed in functional neuroimaging data, reflecting the alternation of high and 
+      low activity across brain regions and their propagation along cortical gradients. 
+      QPPs have been linked to neural processes such as attention, arousal 
+      fluctuations, and cognitive function. Despite their significance, existing QPP 
+      analysis tools are limited by study-specific parameters and complex workflows. To 
+      address these challenges, we present QPPLab , an open-source MATLAB-based toolbox 
+      for detecting, analyzing, and visualizing QPPs from fMRI time series. QPPLab 
+      integrates correlation-based iterative algorithms, supports customizable 
+      parameter settings, and features automated workflows to simplify analysis. 
+      Processing times vary depending on dataset size and the selected mode, with the 
+      fast detection mode completing analyses that can be 4-6 times faster than the 
+      robust detection mode. Results include spatiotemporal templates of QPPs, sliding 
+      correlation time courses, and functional connectivity maps. By reducing manual 
+      parameter adjustments and providing user-friendly tools, QPPLab enables 
+      researchers to efficiently study QPPs across diverse datasets and species, 
+      advancing our understanding of intrinsic brain dynamics.
+FAU - Xu, Nan
+AU  - Xu N
+AD  - Wallace H. Coulter Department of Biomedical Engineering, Georgia Institute of 
+      Technology and Emory University, Atlanta, GA, United States.
+AD  - Fischell Department of Bioengineering, Electrical and Computer Engineering, 
+      University of Maryland, College Park, MD, United States.
+FAU - Yousefi, Behnaz
+AU  - Yousefi B
+AD  - Wallace H. Coulter Department of Biomedical Engineering, Georgia Institute of 
+      Technology and Emory University, Atlanta, GA, United States.
+FAU - Anumba, Nmachi
+AU  - Anumba N
+AD  - Wallace H. Coulter Department of Biomedical Engineering, Georgia Institute of 
+      Technology and Emory University, Atlanta, GA, United States.
+FAU - LaGrow, Theodore J
+AU  - LaGrow TJ
+AD  - Electrical and Computer Engineering, Georgia Tech, Atlanta, GA, United States.
+FAU - Zhang, Xiaodi
+AU  - Zhang X
+AD  - Wallace H. Coulter Department of Biomedical Engineering, Georgia Institute of 
+      Technology and Emory University, Atlanta, GA, United States.
+FAU - Keilholz, Shella
+AU  - Keilholz S
+AD  - Wallace H. Coulter Department of Biomedical Engineering, Georgia Institute of 
+      Technology and Emory University, Atlanta, GA, United States.
+LA  - eng
+GR  - K99 NS123113/NS/NINDS NIH HHS/United States
+GR  - R01 EB029857/EB/NIBIB NIH HHS/United States
+GR  - R01 NS078095/NS/NINDS NIH HHS/United States
+PT  - Journal Article
+DEP - 20250203
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+UOF - bioRxiv. 2025 Jan 24:2023.09.25.559086. doi: 10.1101/2023.09.25.559086. PMID: 
+      37808706
+PMC - PMC11839147
+MID - NIHMS2051810
+OTO - NOTNLM
+OT  - Infraslow activity
+OT  - functional MRI
+OT  - quasiperiodic patterns
+OT  - spatiotemporal brain dynamics
+EDAT- 2025/02/20 06:22
+MHDA- 2025/02/20 06:23
+PMCR- 2025/02/19
+CRDT- 2025/02/20 05:24
+PHST- 2025/02/20 06:23 [medline]
+PHST- 2025/02/20 06:22 [pubmed]
+PHST- 2025/02/20 05:24 [entrez]
+PHST- 2025/02/19 00:00 [pmc-release]
+AID - 102067 [pii]
+AID - 10.1016/j.softx.2025.102067 [doi]
+PST - ppublish
+SO  - SoftwareX. 2025 Feb;29:102067. doi: 10.1016/j.softx.2025.102067. Epub 2025 Feb 3.
+
+PMID- 38009083
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250104
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 23
+DP  - 2023 Jul
+TI  - McDAPS: A multi-channel physiological signals display and analysis system for 
+      clinical researchers.
+LID - 101482 [pii]
+LID - 10.1016/j.softx.2023.101482 [doi]
+AB  - We introduce McDAPS, an interactive software for assessing autonomic imbalance 
+      from non-invasive multi-channel physiological recordings. McDAPS provides a 
+      graphical user interface for data visualization, beat-to-beat processing and 
+      interactive analyses. The software extracts beat-to-beat RR interval systolic 
+      blood pressure, diastolic blood pressure, the pulse amplitude of 
+      photoplethysmogram and the pulse-to-pulse interval. The analysis modules include 
+      stationary and time-varying power spectral analyses, moving-correlation analysis 
+      and univariate analyses. Analyses can also be performed in batch mode if multiple 
+      datasets have to be processed in the same way. The program exports results in 
+      standard CSV format. McDAPS runs in MATLAB, and is supported on MS Windows and 
+      MAC OS systems. The MATLAB source code is available at 
+      https://github.com/thuptimd/McDAPS.git.
+FAU - Thuptimdang, Wanwara
+AU  - Thuptimdang W
+AD  - Institute of Biomedical Engineering, Department of Biomedical Sciences and 
+      Biomedical Engineering, Faculty of Medicine, Prince of Songkla University, Hat 
+      Yai, Songkhla, Thailand.
+FAU - Chalacheva, Patjanaporn
+AU  - Chalacheva P
+AD  - Biomedical Engineering Department, Carnegie Mellon University, Pittsburgh, PA, 
+      United States of America.
+FAU - Coates, Thomas D
+AU  - Coates TD
+AD  - Hematology Section, Cancer and Blood Disease Institute, Children's Hospital Los 
+      Angeles, University of Southern California Keck School of Medicine, Los Angeles, 
+      CA, United States of America.
+FAU - Khoo, Michael C K
+AU  - Khoo MCK
+AD  - Department of Biomedical Engineering, University of Southern California, Los 
+      Angeles, United States of America.
+LA  - eng
+GR  - P41 EB001978/EB/NIBIB NIH HHS/United States
+GR  - U01 HL117718/HL/NHLBI NIH HHS/United States
+PT  - Journal Article
+DEP - 20230727
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC10673622
+MID - NIHMS1932567
+OTO - NOTNLM
+OT  - ANS
+OT  - Beat-to-beat
+OT  - Cross correlation
+OT  - Power spectral analysis
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2023/11/27 06:47
+MHDA- 2023/11/27 06:48
+PMCR- 2023/11/24
+CRDT- 2023/11/27 03:42
+PHST- 2023/11/27 06:48 [medline]
+PHST- 2023/11/27 06:47 [pubmed]
+PHST- 2023/11/27 03:42 [entrez]
+PHST- 2023/11/24 00:00 [pmc-release]
+AID - 101482 [pii]
+AID - 10.1016/j.softx.2023.101482 [doi]
+PST - ppublish
+SO  - SoftwareX. 2023 Jul;23:101482. doi: 10.1016/j.softx.2023.101482. Epub 2023 Jul 
+      27.
+
+PMID- 37799564
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20231026
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 23
+DP  - 2023 Jul
+TI  - clotFoam: An open-source framework to simulate blood clot formation under 
+      arterial flow.
+LID - 101483 [pii]
+LID - 10.1016/j.softx.2023.101483 [doi]
+AB  - Blood clotting involves the coupled processes of platelet aggregation and 
+      coagulation. Simulating clotting under flow in complex geometries is challenging 
+      due to multiple temporal and spatial scales and high computational cost. clotFoam 
+      is an open-source software developed in OpenFOAM that employs a continuum model 
+      of platelet advection, diffusion, and aggregation in a dynamic fluid environment 
+      and a simplified coagulation model with proteins that advect, diffuse, and react 
+      within the fluid and with wall-bound species through reactive boundary 
+      conditions. Our framework provides the foundation on which one can build more 
+      complex models and perform reliable simulations in almost any computational 
+      domain.
+FAU - Montgomery, David
+AU  - Montgomery D
+AD  - Department of Applied Mathematics and Statistics, Colorado School of Mines, 1500 
+      Illinois St, Golden, CO 80401, United States of America.
+FAU - Municchi, Federico
+AU  - Municchi F
+AD  - Department of Mechanical Engineering, Colorado School of Mines, 1500 Illinois St, 
+      Golden, CO 80401, United States of America.
+FAU - Leiderman, Karin
+AU  - Leiderman K
+AD  - Department of Mathematics, University of North Carolina at Chapel Hill, 216 
+      Lenoir Dr, Chapel Hill, NC 27599, United States of America.
+AD  - Computational Medicine Program, University of North Carolina at Chapel Hill, 216 
+      Lenoir Dr, Chapel Hill, NC 27599, United States of America.
+LA  - eng
+GR  - R01 HL151984/HL/NHLBI NIH HHS/United States
+PT  - Journal Article
+DEP - 20230803
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC10552559
+MID - NIHMS1933141
+OTO - NOTNLM
+OT  - Blood clotting
+OT  - Coagulation
+OT  - Hemostasis
+OT  - Multiscale modeling
+OT  - OpenFOAM
+OT  - Platelet aggregation
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2023/10/06 06:43
+MHDA- 2023/10/06 06:44
+PMCR- 2023/10/05
+CRDT- 2023/10/06 03:52
+PHST- 2023/10/06 06:44 [medline]
+PHST- 2023/10/06 06:43 [pubmed]
+PHST- 2023/10/06 03:52 [entrez]
+PHST- 2023/10/05 00:00 [pmc-release]
+AID - 101483 [pii]
+AID - 10.1016/j.softx.2023.101483 [doi]
+PST - ppublish
+SO  - SoftwareX. 2023 Jul;23:101483. doi: 10.1016/j.softx.2023.101483. Epub 2023 Aug 3.
+
+PMID- 37377886
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 22
+DP  - 2023 May
+TI  - BayesESS: A tool for quantifying the impact of parametric priors in Bayesian 
+      analysis.
+LID - 101358 [pii]
+LID - 10.1016/j.softx.2023.101358 [doi]
+AB  - Bayesian inference has become an attractive choice for scientists seeking to 
+      incorporate prior knowledge into their modeling framework. While the R community 
+      has been an important contributor in facilitating Bayesian statistical analyses, 
+      software to evaluate the impact of prior knowledge to such modeling framework has 
+      been lacking. In this article, we present BayesESS, a comprehensive, free, and 
+      open source R package for quantifying the impact of parametric priors in Bayesian 
+      analysis. We also introduce an accompanying web-based application for estimating 
+      and visualizing Bayesian effective sample size for purposes of conducting or 
+      planning Bayesian analyses.
+FAU - Song, Jaejoon
+AU  - Song J
+AD  - Office of Biostatistics, US Food and Drug Administration, Silver Spring, MD 
+      20993, USA.
+FAU - Morita, Satoshi
+AU  - Morita S
+AD  - Department of Biomedical Statistics and Bioinformatics, Kyoto University Graduate 
+      School of Medicine, Kyoto 606-8507, Japan.
+FAU - Kuo, Ying-Wei
+AU  - Kuo YW
+AD  - Department of Biostatistics, The University of Texas MD Anderson Cancer Center, 
+      Houston, TX 77030, USA.
+FAU - Lee, J Jack
+AU  - Lee JJ
+AD  - Department of Biostatistics, The University of Texas MD Anderson Cancer Center, 
+      Houston, TX 77030, USA.
+LA  - eng
+GR  - FD999999/ImFDA/Intramural FDA HHS/United States
+GR  - P30 CA016672/CA/NCI NIH HHS/United States
+GR  - P50 CA221703/CA/NCI NIH HHS/United States
+PT  - Journal Article
+DEP - 20230326
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC10299797
+MID - NIHMS1904447
+OTO - NOTNLM
+OT  - Bayesian analysis
+OT  - Effective sample size
+OT  - Posterior distribution
+OT  - R package
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2023/06/28 13:08
+MHDA- 2023/06/28 13:09
+PMCR- 2023/06/27
+CRDT- 2023/06/28 09:23
+PHST- 2023/06/28 13:09 [medline]
+PHST- 2023/06/28 13:08 [pubmed]
+PHST- 2023/06/28 09:23 [entrez]
+PHST- 2023/06/27 00:00 [pmc-release]
+AID - 101358 [pii]
+AID - 10.1016/j.softx.2023.101358 [doi]
+PST - ppublish
+SO  - SoftwareX. 2023 May;22:101358. doi: 10.1016/j.softx.2023.101358. Epub 2023 Mar 
+      26.
+
+PMID- 37361907
+OWN - NLM
+STAT- Publisher
+LR  - 20230626
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+DP  - 2023 May 23
+TI  - RAMPVIS: A visualization and visual analytics infrastructure for COVID-19 data.
+PG  - 101416
+LID - 10.1016/j.softx.2023.101416 [doi]
+LID - 101416
+AB  - The COVID-19 pandemic generated large amounts of diverse data, including testing, 
+      treatments, vaccine trials, data from modeling, etc. To support epidemiologists 
+      and modeling scientists in their efforts to understand and respond to the 
+      pandemic, there arose a need for web visualization and visual analytics (VIS) 
+      applications to provide insights and support decision-making. In this paper, we 
+      present RAMPVIS, an infrastructure designed to support a range of observational, 
+      analytical, model-developmental, and dissemination tasks. One of the main 
+      features of the system is the ability to "propagate" a visualization designed for 
+      one data source to similar ones, this allows a user to quickly visualize large 
+      amounts of data. In addition to the COVID pandemic, the RAMPVIS software may be 
+      adapted and used with different data to provide rapid visualization support for 
+      other emergency responses.
+CI  - .
+FAU - Rydow, Erik
+AU  - Rydow E
+AD  - Oxford e-Research Centre, University of Oxford, Oxford, OX1 3QG, United Kingdom.
+FAU - Gonen, Tuna
+AU  - Gonen T
+AD  - Oxford e-Research Centre, University of Oxford, Oxford, OX1 3QG, United Kingdom.
+FAU - Kachkaev, Alexander
+AU  - Kachkaev A
+AD  - Oxford e-Research Centre, University of Oxford, Oxford, OX1 3QG, United Kingdom.
+FAU - Khan, Saiful
+AU  - Khan S
+AD  - Oxford e-Research Centre, University of Oxford, Oxford, OX1 3QG, United Kingdom.
+LA  - eng
+PT  - Journal Article
+DEP - 20230523
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC10203881
+OTO - NOTNLM
+OT  - COVID-19
+OT  - Data visualization
+OT  - Model development
+OT  - Ontology
+OT  - Pandemic responses
+OT  - Visual analytics
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2023/06/26 19:07
+MHDA- 2023/06/26 19:07
+PMCR- 2023/05/23
+CRDT- 2023/06/26 12:58
+PHST- 2023/03/25 00:00 [received]
+PHST- 2023/05/09 00:00 [revised]
+PHST- 2023/05/17 00:00 [accepted]
+PHST- 2023/06/26 19:07 [medline]
+PHST- 2023/06/26 19:07 [pubmed]
+PHST- 2023/06/26 12:58 [entrez]
+PHST- 2023/05/23 00:00 [pmc-release]
+AID - S2352-7110(23)00112-7 [pii]
+AID - 101416 [pii]
+AID - 10.1016/j.softx.2023.101416 [doi]
+PST - aheadofprint
+SO  - SoftwareX. 2023 May 23:101416. doi: 10.1016/j.softx.2023.101416.
+
+PMID- 37250590
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20230531
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 22
+DP  - 2023 May
+TI  - gosset: An R package for analysis and synthesis of ranking data in agricultural 
+      experimentation.
+PG  - None
+LID - 10.1016/j.softx.2023.101402 [doi]
+AB  - To derive insights from data, researchers working on agricultural experiments 
+      need appropriate data management and analysis tools. To ensure that workflows are 
+      reproducible and can be applied on a routine basis, programmatic tools are 
+      needed. Such tools are increasingly necessary for rank-based data, a type of data 
+      that is generated in on-farm experimentation and data synthesis exercises, among 
+      others. To address this need, we developed the R package gosset, which provides 
+      functionality for rank-based data and models. The gosset package facilitates data 
+      preparation, modeling and results presentation stages. It introduces novel 
+      functions not available in existing R packages for analyzing ranking data. This 
+      paper demonstrates the package functionality using the case study of a 
+      decentralized on-farm trial of common bean (Phaseolus vulgaris L.) varieties in 
+      Nicaragua.
+CI  - (c) 2023 The Author(s).
+FAU - de Sousa, Kaue
+AU  - de Sousa K
+AD  - Department of Agricultural Sciences, Inland Norway University of Applied 
+      Sciences, 2318 Hamar, Norway.
+AD  - Digital Inclusion, Bioversity International, Parc Scientifique Agropolis II, 
+      34397, Montpellier Cedex 5, France.
+FAU - Brown, David
+AU  - Brown D
+AD  - Laboratory of Geo-Information Science and Remote Sensing, Wageningen University & 
+      Research, Droevendaalsesteeg 3, 6708 PB, Wageningen, The Netherlands.
+AD  - Digital Inclusion, Bioversity International, 30501, Turrialba, Costa Rica.
+AD  - College of Agriculture and Life Sciences, Cornell University, 14853 Ithaca, NY, 
+      United States of America.
+FAU - Steinke, Jonathan
+AU  - Steinke J
+AD  - Digital Inclusion, Bioversity International, Parc Scientifique Agropolis II, 
+      34397, Montpellier Cedex 5, France.
+AD  - Thaer Institute of Agricultural and Horticultural Sciences, Humboldt University 
+      Berlin, Unter den Linden 6, 10099 Berlin, Germany.
+FAU - van Etten, Jacob
+AU  - van Etten J
+AD  - Digital Inclusion, Bioversity International, Parc Scientifique Agropolis II, 
+      34397, Montpellier Cedex 5, France.
+LA  - eng
+PT  - Journal Article
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC10212778
+OTO - NOTNLM
+OT  - Bradley-Terry
+OT  - Data science
+OT  - On-farm trials
+OT  - Plackett-Luce
+OT  - Tricot approach
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2023/05/30 13:07
+MHDA- 2023/05/30 13:08
+PMCR- 2023/05/01
+CRDT- 2023/05/30 11:26
+PHST- 2022/07/17 00:00 [received]
+PHST- 2023/04/10 00:00 [revised]
+PHST- 2023/05/03 00:00 [accepted]
+PHST- 2023/05/30 13:08 [medline]
+PHST- 2023/05/30 13:07 [pubmed]
+PHST- 2023/05/30 11:26 [entrez]
+PHST- 2023/05/01 00:00 [pmc-release]
+AID - S2352-7110(23)00098-5 [pii]
+AID - 101402 [pii]
+AID - 10.1016/j.softx.2023.101402 [doi]
+PST - ppublish
+SO  - SoftwareX. 2023 May;22:None. doi: 10.1016/j.softx.2023.101402.
+
+PMID- 36969748
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20230403
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 22
+DP  - 2023 May
+TI  - T-Ridership: A web tool for reprogramming public transportation fleets to 
+      minimize COVID-19 transmission.
+PG  - 101350
+LID - 10.1016/j.softx.2023.101350 [doi]
+AB  - As the outbreak of novel coronavirus disease (COVID-19) continues to spread 
+      throughout the world, steps are being taken to limit the impact on public health. 
+      In the realm of infectious diseases like COVID-19, social distancing is one of 
+      the effective measures to avoid exposure to the virus and reduce its spread. 
+      Traveling on public transport can meaningfully facilitate the propagation of the 
+      transmission of infectious diseases. Accordingly, responsive actions taken by 
+      public transit agencies against risk factors can effectively limit the risk and 
+      make transit systems safe. Among the multitude of risk factors that can affect 
+      infection spread on public transport, the likelihood of exposure is a major 
+      factor that depends on the number of people riding the public transport and can 
+      be reduced by socially distanced settings. Considering that many individuals may 
+      not act in the socially optimal manner, the necessity of public transit agencies 
+      to implement measures and restrictions is vital. In this study, we present a 
+      novel web-based application, T-Ridership, based on a hybrid optimized dynamic 
+      programming inspired by neural networks algorithm to optimize public transit for 
+      safety with respect to COVID-19. Two main steps are taken in the analysis through 
+      Metropolitan Transportation Authority (MTA): detecting high-density stations by 
+      input data normalization, and then, using these results, the T-Ridership tool 
+      automatically determines optimal station order to avoid overcrowded transit 
+      vehicles. Effectively our proposed web tool helps public transit to be safe to 
+      ride under risk of infections by reducing the density of riders on public transit 
+      vehicles as well as trip duration. These results can be used in expanding on and 
+      improving policy in public transit, to better plan the scheduled time of trains 
+      and buses in a way that prevents high-volume human contact, increases social 
+      distance, and reduces the possibility of disease transmission (available 
+      at:http://t-ridership.com and GitHub at: 
+      https://github.com/Imani-Saba/TRidership).
+CI  - (c) 2023 The Authors.
+FAU - Imani, Saba
+AU  - Imani S
+AD  - School of Architecture, University of Southern California, Los Angeles, CA, USA.
+FAU - Vahed, Majid
+AU  - Vahed M
+AD  - Pharmaceutical Sciences Research Center, Shahid Beheshti University of Medical 
+      Sciences, Tehran, Iran.
+FAU - Satodia, Shreya
+AU  - Satodia S
+AD  - School of Architecture, University of Southern California, Los Angeles, CA, USA.
+FAU - Vahed, Mohammad
+AU  - Vahed M
+AD  - Department of Clinical Pharmacy, School of Pharmacy, University of Southern 
+      California, Los Angeles, CA, USA.
+LA  - eng
+PT  - Journal Article
+DEP - 20230309
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9995304
+OTO - NOTNLM
+OT  - COVID-19
+OT  - Machine learning
+OT  - Neural networks
+OT  - Public health
+OT  - Public transportation planning
+OT  - Social distancing
+OT  - Travel restrictions
+OT  - Web-based application
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2023/03/28 06:00
+MHDA- 2023/03/28 06:01
+PMCR- 2023/03/09
+CRDT- 2023/03/27 03:42
+PHST- 2022/05/13 00:00 [received]
+PHST- 2022/12/12 00:00 [revised]
+PHST- 2023/03/01 00:00 [accepted]
+PHST- 2023/03/27 03:42 [entrez]
+PHST- 2023/03/28 06:00 [pubmed]
+PHST- 2023/03/28 06:01 [medline]
+PHST- 2023/03/09 00:00 [pmc-release]
+AID - S2352-7110(23)00046-8 [pii]
+AID - 101350 [pii]
+AID - 10.1016/j.softx.2023.101350 [doi]
+PST - ppublish
+SO  - SoftwareX. 2023 May;22:101350. doi: 10.1016/j.softx.2023.101350. Epub 2023 Mar 9.
+
+PMID- 36619798
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 17
+DP  - 2022 Jan
+TI  - PRETUS: A plug-in based platform for real-time ultrasound imaging research.
+PG  - 100959
+LID - 10.1016/j.softx.2021.100959 [doi]
+LID - 100959
+AB  - We present PRETUS - a Plugin-based Real Time UltraSound software platform for 
+      live ultrasound image analysis and operator support. The software is lightweight; 
+      functionality is brought in via independent plug-ins that can be arranged in 
+      sequence. The software allows to capture the real-time stream of ultrasound 
+      images from virtually any ultrasound machine, applies computational methods and 
+      visualizes the results on-the-fly. Plug-ins can run concurrently without blocking 
+      each other. They can be implemented in C++ and Python. A graphical user interface 
+      can be implemented for each plug-in, and presented to the user in a compact way. 
+      The software is free and open source, and allows for rapid prototyping and 
+      testing of real-time ultrasound imaging methods in a manufacturer-agnostic 
+      fashion. The software is provided with input, output and processing plug-ins, as 
+      well as with tutorials to illustrate how to develop new plug-ins for PRETUS.
+FAU - Gomez, Alberto
+AU  - Gomez A
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Zimmer, Veronika A
+AU  - Zimmer VA
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+AD  - Department of Informatics, Technical University Munich, Germany.
+FAU - Wheeler, Gavin
+AU  - Wheeler G
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Toussaint, Nicolas
+AU  - Toussaint N
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Deng, Shujie
+AU  - Deng S
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Wright, Robert
+AU  - Wright R
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Skelton, Emily
+AU  - Skelton E
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Matthew, Jackie
+AU  - Matthew J
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Kainz, Bernhard
+AU  - Kainz B
+AD  - Department of Computing, Imperial College London, UK.
+AD  - Friedrich-Alexander-University Erlangen-Nurnberg, Germany.
+FAU - Hajnal, Jo
+AU  - Hajnal J
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+FAU - Schnabel, Julia
+AU  - Schnabel J
+AD  - School of Biomedical Engineering & Imaging Sciences, King's College London, UK.
+AD  - Department of Informatics, Technical University Munich, Germany.
+AD  - Helmholtz Zentrum Munchen - German Research Center for Environmental Health, 
+      Germany.
+LA  - eng
+GR  - 102431/WT_/Wellcome Trust/United Kingdom
+GR  - 203148/WT_/Wellcome Trust/United Kingdom
+PT  - Journal Article
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7614027
+MID - EMS158114
+OTO - NOTNLM
+OT  - Plug-in based
+OT  - Real time
+OT  - Ultrasound imaging
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2023/01/10 06:00
+MHDA- 2023/01/10 06:01
+PMCR- 2023/01/06
+CRDT- 2023/01/09 03:58
+PHST- 2023/01/09 03:58 [entrez]
+PHST- 2023/01/10 06:00 [pubmed]
+PHST- 2023/01/10 06:01 [medline]
+PHST- 2023/01/06 00:00 [pmc-release]
+AID - 10.1016/j.softx.2021.100959 [doi]
+PST - ppublish
+SO  - SoftwareX. 2022 Jan;17:100959. doi: 10.1016/j.softx.2021.100959.
+
+PMID- 36530569
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20221222
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 20
+DP  - 2022 Dec
+TI  - CACPPAF, a COMSOL application to characterize polyelectrolyte properties of actin 
+      filaments.
+LID - 101259 [pii]
+LID - 10.1016/j.softx.2022.101259 [doi]
+AB  - We present an interactive COMSOL web application that allows both expert and 
+      non-expert users to numerically evaluate the electric potential, ionic 
+      concentration distribution, velocity profile, and ionic current along a molecular 
+      structure surface characterizing actin filaments. This online computational and 
+      visualization tool runs on a high performance server 
+      (http://marucholab.physics.utsa.edu:2036), that enables users to perform multiple 
+      analyses and comparisons without compromising computational resources. As a 
+      unique feature, the multiphysics formulation accounts for the filament surface 
+      roughness, the finite filament size, and the ionic condensation, providing a 
+      deeper understanding of the electrochemical phenomena taking place at the 
+      interface between the irregular charged shape of the filament and its biological 
+      environment. Overall, the interactive component allows investigators to 
+      characterize polyelectrolyte properties of healthy and abnormal actin filaments 
+      in physiological and pathological conditions.
+FAU - Manrique-Bedoya, Santiago
+AU  - Manrique-Bedoya S
+AD  - Department of Physics and Astronomy, The University of Texas at San Antonio, TX 
+      78249, USA.
+FAU - Marucho, Marcelo
+AU  - Marucho M
+AD  - Department of Physics and Astronomy, The University of Texas at San Antonio, TX 
+      78249, USA.
+LA  - eng
+GR  - SC1 GM127187/GM/NIGMS NIH HHS/United States
+PT  - Journal Article
+DEP - 20221116
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9757808
+MID - NIHMS1856923
+OTO - NOTNLM
+OT  - Actin filament
+OT  - Comsol application
+OT  - Electrochemical interactions
+OT  - Electrochemical phenomena
+OT  - Polyelectrolyte properties
+OT  - Scientific software
+EDAT- 2022/12/20 06:00
+MHDA- 2022/12/20 06:01
+PMCR- 2022/12/16
+CRDT- 2022/12/19 03:32
+PHST- 2022/12/19 03:32 [entrez]
+PHST- 2022/12/20 06:00 [pubmed]
+PHST- 2022/12/20 06:01 [medline]
+PHST- 2022/12/16 00:00 [pmc-release]
+AID - 101259 [pii]
+AID - 10.1016/j.softx.2022.101259 [doi]
+PST - ppublish
+SO  - SoftwareX. 2022 Dec;20:101259. doi: 10.1016/j.softx.2022.101259. Epub 2022 Nov 
+      16.
+
+PMID- 35782394
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20220716
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 18
+DP  - 2022 Jun
+TI  - TumorDecon: A digital cytometry software.
+LID - 101072 [pii]
+LID - 10.1016/j.softx.2022.101072 [doi]
+AB  - There are many experimental methods for characterizing immune profiles of tumors, 
+      such as flow and mass cytometry. However, these approaches are time and resource 
+      intensive. Thus, several "digital cytometry" methods have been developed to 
+      extract cell frequencies from RNA-seq data. Here, we introduce TumorDecon, named 
+      for its potential to deconvolve the distribution of cells from the gene 
+      expression levels of a bulk of cells, such as a tumor. The Python package 
+      provides an accessible way of applying these methods. It includes four 
+      deconvolution methods as well as several gene sets, signature matrices, and 
+      functions for generating custom signature matrices.
+FAU - Aronow, Rachel A
+AU  - Aronow RA
+AD  - Department of Mathematics and Statistics, University of Massachusetts Amherst, 
+      Amherst, 01003, USA.
+FAU - Akbarinejad, Shaya
+AU  - Akbarinejad S
+AD  - Department of Mathematics and Statistics, University of Massachusetts Amherst, 
+      Amherst, 01003, USA.
+FAU - Le, Trang
+AU  - Le T
+AD  - Department of Mathematics and Statistics, University of Massachusetts Amherst, 
+      Amherst, 01003, USA.
+FAU - Su, Sumeyye
+AU  - Su S
+AD  - Department of Mathematics and Statistics, University of Massachusetts Amherst, 
+      Amherst, 01003, USA.
+FAU - Shahriyari, Leili
+AU  - Shahriyari L
+AD  - Department of Mathematics and Statistics, University of Massachusetts Amherst, 
+      Amherst, 01003, USA.
+LA  - eng
+GR  - R21 CA242933/CA/NCI NIH HHS/United States
+PT  - Journal Article
+DEP - 20220407
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9248989
+MID - NIHMS1812936
+OTO - NOTNLM
+OT  - CIBERSORT
+OT  - DeconRNASeq
+OT  - Deconvolution methods
+OT  - Digital cytometry
+OT  - Signature matrix
+OT  - SingScore
+OT  - ssGSEA
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2022/07/06 06:00
+MHDA- 2022/07/06 06:01
+PMCR- 2022/07/01
+CRDT- 2022/07/05 09:50
+PHST- 2022/07/05 09:50 [entrez]
+PHST- 2022/07/06 06:00 [pubmed]
+PHST- 2022/07/06 06:01 [medline]
+PHST- 2022/07/01 00:00 [pmc-release]
+AID - 101072 [pii]
+AID - 10.1016/j.softx.2022.101072 [doi]
+PST - ppublish
+SO  - SoftwareX. 2022 Jun;18:101072. doi: 10.1016/j.softx.2022.101072. Epub 2022 Apr 7.
+
+PMID- 35465173
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20240826
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 17
+DP  - 2022 Jan
+TI  - Open community platform for hearing aid algorithm research: open Master Hearing 
+      Aid (openMHA).
+LID - 100953 [pii]
+LID - 10.1016/j.softx.2021.100953 [doi]
+AB  - open Master Hearing Aid (openMHA) was developed and provided to the hearing aid 
+      research community as an open-source software platform with the aim to support 
+      sustainable and reproducible research towards improvement and new types of 
+      assistive hearing systems not limited by proprietary software. The software 
+      offers a flexible framework that allows the users to conduct hearing aid research 
+      using tools and a number of signal processing plugins provided with the software 
+      as well as the implementation of own methods. The openMHA software is independent 
+      of a specific hardware and supports Linux, macOS and Windows operating systems as 
+      well as 32-bit and 64-bit ARM-based architectures such as used in small portable 
+      integrated systems. www.openmha.org.
+FAU - Kayser, Hendrik
+AU  - Kayser H
+AD  - Carl von Ossietzky Universitat Oldenburg, Department of Medical Physics and 
+      Acoustics - Auditory Signal Processing and Hearing Devices, D-26111 Oldenburg, 
+      Germany.
+AD  - Horzentrum Oldenburg gGmbH, Marie-Curie-Str. 2, 26129 Oldenburg, Germany.
+AD  - Cluster of Excellence "Hearing4all", Germany.
+FAU - Herzke, Tobias
+AU  - Herzke T
+AD  - Horzentrum Oldenburg gGmbH, Marie-Curie-Str. 2, 26129 Oldenburg, Germany.
+AD  - Cluster of Excellence "Hearing4all", Germany.
+FAU - Maanen, Paul
+AU  - Maanen P
+AD  - Horzentrum Oldenburg gGmbH, Marie-Curie-Str. 2, 26129 Oldenburg, Germany.
+AD  - Cluster of Excellence "Hearing4all", Germany.
+FAU - Zimmermann, Max
+AU  - Zimmermann M
+AD  - Horzentrum Oldenburg gGmbH, Marie-Curie-Str. 2, 26129 Oldenburg, Germany.
+AD  - Cluster of Excellence "Hearing4all", Germany.
+FAU - Grimm, Giso
+AU  - Grimm G
+AD  - Carl von Ossietzky Universitat Oldenburg, Department of Medical Physics and 
+      Acoustics - Auditory Signal Processing and Hearing Devices, D-26111 Oldenburg, 
+      Germany.
+AD  - Horzentrum Oldenburg gGmbH, Marie-Curie-Str. 2, 26129 Oldenburg, Germany.
+AD  - Cluster of Excellence "Hearing4all", Germany.
+FAU - Hohmann, Volker
+AU  - Hohmann V
+AD  - Carl von Ossietzky Universitat Oldenburg, Department of Medical Physics and 
+      Acoustics - Auditory Signal Processing and Hearing Devices, D-26111 Oldenburg, 
+      Germany.
+AD  - Horzentrum Oldenburg gGmbH, Marie-Curie-Str. 2, 26129 Oldenburg, Germany.
+AD  - Cluster of Excellence "Hearing4all", Germany.
+LA  - eng
+GR  - R01 DC015429/DC/NIDCD NIH HHS/United States
+PT  - Journal Article
+DEP - 20211230
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9022875
+MID - NIHMS1784836
+OTO - NOTNLM
+OT  - Audiological research
+OT  - Hearing aids
+OT  - Real-time audio signal processing
+EDAT- 2022/04/26 06:00
+MHDA- 2022/04/26 06:01
+PMCR- 2022/04/21
+CRDT- 2022/04/25 05:45
+PHST- 2022/04/25 05:45 [entrez]
+PHST- 2022/04/26 06:00 [pubmed]
+PHST- 2022/04/26 06:01 [medline]
+PHST- 2022/04/21 00:00 [pmc-release]
+AID - 100953 [pii]
+AID - 10.1016/j.softx.2021.100953 [doi]
+PST - ppublish
+SO  - SoftwareX. 2022 Jan;17:100953. doi: 10.1016/j.softx.2021.100953. Epub 2021 Dec 
+      30.
+
+PMID- 34926780
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 16
+DP  - 2021 Dec
+TI  - pySuStaIn: a Python implementation of the Subtype and Stage Inference algorithm.
+LID - 100811 [pii]
+LID - 10.1016/j.softx.2021.100811 [doi]
+AB  - Progressive disorders are highly heterogeneous. Symptom-based clinical 
+      classification of these disorders may not reflect the underlying pathobiology. 
+      Data-driven subtyping and staging of patients has the potential to disentangle 
+      the complex spatiotemporal patterns of disease progression. Tools that enable 
+      this are in high demand from clinical and treatment-development communities. Here 
+      we describe the pySuStaIn software package, a Python-based implementation of the 
+      Subtype and Stage Inference (SuStaIn) algorithm. SuStaIn unravels the complexity 
+      of heterogeneous diseases by inferring multiple disease progression patterns 
+      (subtypes) and individual severity (stages) from cross-sectional data. The 
+      primary aims of pySuStaIn are to enable widespread application and translation of 
+      SuStaIn via an accessible Python package that supports simple extension and 
+      generalization to novel modelling situations within a single, consistent 
+      architecture.
+FAU - Aksman, Leon M
+AU  - Aksman LM
+AD  - Stevens Neuroimaging and Informatics Institute, Keck School of Medicine, 
+      University of Southern California.
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+FAU - Wijeratne, Peter A
+AU  - Wijeratne PA
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+FAU - Oxtoby, Neil P
+AU  - Oxtoby NP
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+FAU - Eshaghi, Arman
+AU  - Eshaghi A
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+AD  - Queen Square Multiple Sclerosis Centre, Department of Neuroinflammation, UCL 
+      Queen Square Institute of Neurology, Faculty of Brain Sciences, University 
+      College London.
+FAU - Shand, Cameron
+AU  - Shand C
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+FAU - Altmann, Andre
+AU  - Altmann A
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+FAU - Alexander, Daniel C
+AU  - Alexander DC
+AD  - Centre for Medical Image Computing, Departments of Computer Science and Medical 
+      Physics, University College London.
+FAU - Young, Alexandra L
+AU  - Young AL
+AD  - Department of Neuroimaging, Institute of Psychiatry, Psychology and Neuroscience, 
+      King's College London.
+LA  - eng
+GR  - P41 EB015922/EB/NIBIB NIH HHS/United States
+GR  - P50 AG005142/AG/NIA NIH HHS/United States
+GR  - MR/T027770/1/MRC_/Medical Research Council/United Kingdom
+GR  - MR/S03546X/1/MRC_/Medical Research Council/United Kingdom
+GR  - MR/L016311/1/MRC_/Medical Research Council/United Kingdom
+GR  - MR/T027800/1/MRC_/Medical Research Council/United Kingdom
+GR  - P01 AG012435/AG/NIA NIH HHS/United States
+GR  - P30 AG066530/AG/NIA NIH HHS/United States
+PT  - Journal Article
+DEP - 20210925
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC8682799
+MID - NIHMS1747776
+OTO - NOTNLM
+OT  - Disease progression modeling
+OT  - disease heterogeneity
+OT  - disease staging
+OT  - disease subtyping
+COIS- Conflict of Interest We wish to confirm that there are no known conflicts of 
+      interest associated with this publication and there has been no significant 
+      financial support for this work that could have influenced its outcome.
+EDAT- 2021/12/21 06:00
+MHDA- 2021/12/21 06:01
+PMCR- 2021/12/17
+CRDT- 2021/12/20 06:21
+PHST- 2021/12/20 06:21 [entrez]
+PHST- 2021/12/21 06:00 [pubmed]
+PHST- 2021/12/21 06:01 [medline]
+PHST- 2021/12/17 00:00 [pmc-release]
+AID - 100811 [pii]
+AID - 10.1016/j.softx.2021.100811 [doi]
+PST - ppublish
+SO  - SoftwareX. 2021 Dec;16:100811. doi: 10.1016/j.softx.2021.100811. Epub 2021 Sep 
+      25.
+
+PMID- 34778507
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20240404
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 16
+DP  - 2021 Dec
+TI  - Covira: A COVID-19 risk assessment, visualization and communication tool.
+PG  - 100873
+LID - 10.1016/j.softx.2021.100873 [doi]
+AB  - Assessing the possibility of Coronavirus infection and its risk on an 
+      individual's life, estimating the spatial transmission risk based on the dynamic 
+      condition of a particular place into consideration, and communicating the same to 
+      the public is crucial for minimizing the potential impact of COVID-19. With the 
+      increase in cases world-wide, new patterns are being unfolded. Nevertheless, an 
+      application for risk assessment will not only help the researcher to quickly 
+      verify the proof of concept but also is a powerful tool to bring into notice the 
+      results immediately as one of the perfect tools for risk communication. Covira 
+      (https://covira.info) is an open-source web-based software that captures the 
+      response, calculates personal as well as regional risk, and displays the result 
+      to the end-user in the form of maps and risk cards.
+CI  - (c) 2021 The Authors.
+FAU - Ghimire, Bhoj Raj
+AU  - Ghimire BR
+AD  - Nepal Open University, Nepal.
+AD  - Science Hub, Nepal.
+FAU - Parajuli, Rishi Ram
+AU  - Parajuli RR
+AD  - Science Hub, Nepal.
+FAU - Khatiwada, Bipin
+AU  - Khatiwada B
+AD  - Science Hub, Nepal.
+FAU - Poudel, Shobha
+AU  - Poudel S
+AD  - Science Hub, Nepal.
+AD  - Policy Research Institute, Nepal.
+FAU - Sharma, Kusum
+AU  - Sharma K
+AD  - Science Hub, Nepal.
+FAU - Mishra, Bhogendra
+AU  - Mishra B
+AD  - Science Hub, Nepal.
+AD  - Policy Research Institute, Nepal.
+LA  - eng
+PT  - Journal Article
+DEP - 20211030
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC8570635
+OTO - NOTNLM
+OT  - COVID-19
+OT  - Covira
+OT  - Personal risk
+OT  - Risk assessment
+OT  - Risk communication tool
+OT  - Software
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2021/11/16 06:00
+MHDA- 2021/11/16 06:01
+PMCR- 2021/10/30
+CRDT- 2021/11/15 07:11
+PHST- 2021/01/16 00:00 [received]
+PHST- 2021/10/08 00:00 [revised]
+PHST- 2021/10/19 00:00 [accepted]
+PHST- 2021/11/15 07:11 [entrez]
+PHST- 2021/11/16 06:00 [pubmed]
+PHST- 2021/11/16 06:01 [medline]
+PHST- 2021/10/30 00:00 [pmc-release]
+AID - S2352-7110(21)00140-0 [pii]
+AID - 100873 [pii]
+AID - 10.1016/j.softx.2021.100873 [doi]
+PST - ppublish
+SO  - SoftwareX. 2021 Dec;16:100873. doi: 10.1016/j.softx.2021.100873. Epub 2021 Oct 
+      30.
+
+PMID- 34703873
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20211029
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 14
+DP  - 2021 Jun
+TI  - CycFlowDec: A Python module for decomposing flow networks using simple cycles.
+LID - 100676 [pii]
+LID - 10.1016/j.softx.2021.100676 [doi]
+AB  - New algorithms for determining the expected flow through simple cycles in a 
+      closed network are presented. Current network analysis software do not implement 
+      algorithms for expected cyclic flow decomposition, despite its potential value. 
+      Decomposing networks into expected cycle flows provides a quantitative 
+      characterization of network cycles that can be further analyzed for sensitivity 
+      and correlative behavior. An efficient, general algorithm has been coded into 
+      CycFlowDec, an open source Python module available at 
+      https://github.com/austenb28/CycFlowDec.
+FAU - Bernardi, Austen
+AU  - Bernardi A
+AD  - Department of Chemistry, University of Utah, 1400 E, Salt Lake City, UT, 84112, 
+      United States of America.
+FAU - Swanson, Jessica M J
+AU  - Swanson JMJ
+AD  - Department of Chemistry, University of Utah, 1400 E, Salt Lake City, UT, 84112, 
+      United States of America.
+LA  - eng
+GR  - P50 AI150464/AI/NIAID NIH HHS/United States
+PT  - Journal Article
+DEP - 20210224
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC8545271
+MID - NIHMS1708640
+OTO - NOTNLM
+OT  - CycFlowDec
+OT  - Cyclic flow decomposition
+OT  - Kinetic modeling
+OT  - Kinetic networks
+OT  - Network analysis
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2021/10/28 06:00
+MHDA- 2021/10/28 06:01
+PMCR- 2021/10/25
+CRDT- 2021/10/27 07:11
+PHST- 2021/10/27 07:11 [entrez]
+PHST- 2021/10/28 06:00 [pubmed]
+PHST- 2021/10/28 06:01 [medline]
+PHST- 2021/10/25 00:00 [pmc-release]
+AID - 100676 [pii]
+AID - 10.1016/j.softx.2021.100676 [doi]
+PST - ppublish
+SO  - SoftwareX. 2021 Jun;14:100676. doi: 10.1016/j.softx.2021.100676. Epub 2021 Feb 
+      24.
+
+PMID- 36568894
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20230103
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 15
+DP  - 2021 Jul
+TI  - pyPOCQuant - A tool to automatically quantify Point-Of-Care Tests from images.
+PG  - 100710
+LID - 10.1016/j.softx.2021.100710 [doi]
+AB  - Lateral flow Point-Of-Care Tests (POCTs) are a valuable tool for rapidly 
+      detecting pathogens and the associated immune response in humans and animals. In 
+      the context of the SARS-CoV-2 pandemic, they offer rapid on-site diagnostics and 
+      can relieve centralized laboratory testing sites, thus freeing resources that can 
+      be focused on especially vulnerable groups. However, visual interpretation of the 
+      POCT test lines is subjective, error prone and only qualitative. Here we present 
+      pyPOCQuant, an open-source tool implemented in Python 3 that can robustly and 
+      reproducibly analyze POCTs from digital images and return an unbiased and 
+      quantitative measurement of the POCT test lines.
+CI  - (c) 2021 The Author(s).
+FAU - Cuny, Andreas P
+AU  - Cuny AP
+AD  - ETH Zurich, Department of Biosystems Science and Engineering, Mattenstr. 26, 4058 
+      Basel, Switzerland.
+AD  - Swiss Institute of Bioinformatics, Mattenstr. 26, 4058 Basel, Switzerland.
+FAU - Rudolf, Fabian
+AU  - Rudolf F
+AD  - ETH Zurich, Department of Biosystems Science and Engineering, Mattenstr. 26, 4058 
+      Basel, Switzerland.
+AD  - Swiss Institute of Bioinformatics, Mattenstr. 26, 4058 Basel, Switzerland.
+FAU - Ponti, Aaron
+AU  - Ponti A
+AD  - ETH Zurich, Department of Biosystems Science and Engineering, Mattenstr. 26, 4058 
+      Basel, Switzerland.
+LA  - eng
+PT  - Journal Article
+DEP - 20210609
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9758393
+OTO - NOTNLM
+OT  - Computer vision
+OT  - Diagnostics
+OT  - Lateral flow assay (LFA)
+OT  - Lateral flow immunoassay (LFIA)
+OT  - Point of care test (POCT)
+OT  - QR code
+OT  - Rapid diagnostic tests (RTD)
+OT  - Rapid testing
+OT  - Readout zone quantification
+OT  - Test line quantification
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2021/07/01 00:00
+MHDA- 2021/07/01 00:01
+PMCR- 2021/06/09
+CRDT- 2022/12/26 04:01
+PHST- 2021/01/12 00:00 [received]
+PHST- 2021/04/19 00:00 [revised]
+PHST- 2021/05/13 00:00 [accepted]
+PHST- 2022/12/26 04:01 [entrez]
+PHST- 2021/07/01 00:00 [pubmed]
+PHST- 2021/07/01 00:01 [medline]
+PHST- 2021/06/09 00:00 [pmc-release]
+AID - S2352-7110(21)00055-8 [pii]
+AID - 100710 [pii]
+AID - 10.1016/j.softx.2021.100710 [doi]
+PST - ppublish
+SO  - SoftwareX. 2021 Jul;15:100710. doi: 10.1016/j.softx.2021.100710. Epub 2021 Jun 9.
+
+PMID- 34124331
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 12
+DP  - 2020 Jul-Dec
+TI  - CemrgApp: An interactive medical imaging application with image processing, 
+      computer vision, and machine learning toolkits for cardiovascular research.
+PG  - 100570
+LID - 10.1016/j.softx.2020.100570 [doi]
+LID - 100570
+AB  - Personalised medicine is based on the principle that each body is unique and will 
+      respond to therapies differently. In cardiology, characterising patient specific 
+      cardiovascular properties would help in personalising care. One promising 
+      approach for characterising these properties relies on performing computational 
+      analysis of multimodal imaging data. An interactive cardiac imaging environment, 
+      which can seamlessly render, manipulate, derive calculations, and otherwise 
+      prototype research activities, is therefore sought-after. We developed the 
+      Cardiac Electro-Mechanics Research Group Application (CemrgApp) as a platform 
+      with custom image processing and computer vision toolkits for applying 
+      statistical, machine learning and simulation approaches to study physiology, 
+      pathology, diagnosis and treatment of the cardiovascular system. CemrgApp 
+      provides an integrated environment, where cardiac data visualisation and workflow 
+      prototyping are presented through a common graphical user interface.
+FAU - Razeghi, Orod
+AU  - Razeghi O
+AD  - King's College London, London, United Kingdom.
+FAU - Solis-Lemus, Jose Alonso
+AU  - Solis-Lemus JA
+AD  - King's College London, London, United Kingdom.
+FAU - Lee, Angela W C
+AU  - Lee AWC
+AD  - King's College London, London, United Kingdom.
+FAU - Karim, Rashed
+AU  - Karim R
+AD  - King's College London, London, United Kingdom.
+FAU - Corrado, Cesare
+AU  - Corrado C
+AD  - King's College London, London, United Kingdom.
+FAU - Roney, Caroline H
+AU  - Roney CH
+AD  - King's College London, London, United Kingdom.
+FAU - de Vecchi, Adelaide
+AU  - de Vecchi A
+AD  - King's College London, London, United Kingdom.
+FAU - Niederer, Steven A
+AU  - Niederer SA
+AD  - King's College London, London, United Kingdom.
+LA  - eng
+GR  - 203148/WT_/Wellcome Trust/United Kingdom
+GR  - II-LB-1116-20001/DH_/Department of Health/United Kingdom
+GR  - MR/S015086/1/MRC_/Medical Research Council/United Kingdom
+PT  - Journal Article
+DEP - 20200731
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7610963
+MID - EMS124556
+OTO - NOTNLM
+OT  - Cardiovascular research
+OT  - Computer vision
+OT  - Image processing
+OT  - Interactive platform
+OT  - Machine learning
+OT  - Medical imaging
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2021/06/15 06:00
+MHDA- 2021/06/15 06:01
+PMCR- 2021/06/11
+CRDT- 2021/06/14 09:53
+PHST- 2021/06/14 09:53 [entrez]
+PHST- 2021/06/15 06:00 [pubmed]
+PHST- 2021/06/15 06:01 [medline]
+PHST- 2021/06/11 00:00 [pmc-release]
+AID - 10.1016/j.softx.2020.100570 [doi]
+PST - epublish
+SO  - SoftwareX. 2020 Jul 31;12:100570. doi: 10.1016/j.softx.2020.100570. eCollection 
+      2020 Jul-Dec.
+
+PMID- 33623815
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20210305
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 14
+DP  - 2021 Jun
+TI  - Toolbox to simulate and mitigate COVID-19 propagation.
+PG  - 100673
+LID - 10.1016/j.softx.2021.100673 [doi]
+AB  - In this paper, we present an age-and-migration-dependent Markov-chain-based model 
+      for the propagation of the COVID-19, together with a user-friendly MatLab-based 
+      toolbox. Furthermore, we present examples to simulate the propagation of the 
+      virus internationally and locally (in a particular country).
+CI  - (c) 2021 Published by Elsevier B.V.
+FAU - Frihi, Zahrate El Oula
+AU  - Frihi ZEO
+AD  - Lab. of Probability and Statistics (LaPS), Department of Mathematics, 
+      Badji-Mokhtar University, B.P.12, 23000, Annaba, Algeria.
+FAU - Barreiro-Gomez, Julian
+AU  - Barreiro-Gomez J
+AD  - Learning & Game Theory Laboratory (L&G-Lab), New York University Abu Dhabi, PO 
+      Box 129188, Abu Dhabi, UAE.
+AD  - NYUAD Research Institute, New York University Abu Dhabi, PO Box 129188, Abu 
+      Dhabi, UAE.
+FAU - Choutri, Salah Eddine
+AU  - Choutri SE
+AD  - Learning & Game Theory Laboratory (L&G-Lab), New York University Abu Dhabi, PO 
+      Box 129188, Abu Dhabi, UAE.
+AD  - NYUAD Research Institute, New York University Abu Dhabi, PO Box 129188, Abu 
+      Dhabi, UAE.
+FAU - Tembine, Hamidou
+AU  - Tembine H
+AD  - Learning & Game Theory Laboratory (L&G-Lab), New York University Abu Dhabi, PO 
+      Box 129188, Abu Dhabi, UAE.
+AD  - NYUAD Research Institute, New York University Abu Dhabi, PO Box 129188, Abu 
+      Dhabi, UAE.
+LA  - eng
+PT  - Journal Article
+DEP - 20210218
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7891107
+OTO - NOTNLM
+OT  - 60-04
+OT  - 60J27
+OT  - COVID-19
+OT  - Markov chain
+OT  - Simulation
+OT  - Toolbox
+COIS- The authors declare that they have no known competing financial interests or 
+      personal relationships that could have appeared to influence the work reported in 
+      this paper.
+EDAT- 2021/02/25 06:00
+MHDA- 2021/02/25 06:01
+PMCR- 2021/02/18
+CRDT- 2021/02/24 05:44
+PHST- 2020/06/16 00:00 [received]
+PHST- 2020/10/18 00:00 [revised]
+PHST- 2021/02/02 00:00 [accepted]
+PHST- 2021/02/25 06:00 [pubmed]
+PHST- 2021/02/25 06:01 [medline]
+PHST- 2021/02/24 05:44 [entrez]
+PHST- 2021/02/18 00:00 [pmc-release]
+AID - S2352-7110(21)00018-2 [pii]
+AID - 100673 [pii]
+AID - 10.1016/j.softx.2021.100673 [doi]
+PST - ppublish
+SO  - SoftwareX. 2021 Jun;14:100673. doi: 10.1016/j.softx.2021.100673. Epub 2021 Feb 
+      18.
+
+PMID- 33447655
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20240330
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 12
+DP  - 2020 Jul-Dec
+TI  - Graphical interface for automated management of motion artifact within fMRI 
+      acquisitions: INFOBAR.
+LID - 100598 [pii]
+LID - 10.1016/j.softx.2020.100598 [doi]
+AB  - Independent Component Analysis-based Automatic Removal of Motion Artifacts 
+      (ICA-AROMA; Pruim et al., 2015) is a robust approach to remove brain activity 
+      related to head motion within functional magnetic resonance imaging (fMRI) 
+      datasets. However, ICA-AROMA requires command line implementation and customized 
+      code to batch process large datasets. We developed a cross-platform, open-source 
+      graphical user Interface for Batch processing fMRI datasets using ICA-AROMA 
+      (INFOBAR). INFOBAR allows a user to search directories, identify appropriate 
+      datasets, and batch execute ICA-AROMA. INFOBAR also has additional data 
+      processing options and visualization features to support all researchers 
+      interested in mitigating head motion artifact in post-processing using ICA-AROMA.
+FAU - Anand, Manish
+AU  - Anand M
+AD  - The SPORT Center, Division of Sports Medicine, Cincinnati Children's Hospital 
+      Medical Center, Cincinnati, OH, USA.
+FAU - Diekfuss, Jed A
+AU  - Diekfuss JA
+AD  - The SPORT Center, Division of Sports Medicine, Cincinnati Children's Hospital 
+      Medical Center, Cincinnati, OH, USA.
+AD  - Emory Sport Performance and Research Center, Flowery Branch, GA, USA.
+AD  - Department of Orthopaedics, Emory University School of Medicine, Atlanta, GA, 
+      USA.
+FAU - Slutsky-Ganesh, Alexis B
+AU  - Slutsky-Ganesh AB
+AD  - Department of Kinesiology, University of North Carolina at Greensboro, 
+      Greensboro, NC, USA.
+FAU - Bonnette, Scott
+AU  - Bonnette S
+AD  - The SPORT Center, Division of Sports Medicine, Cincinnati Children's Hospital 
+      Medical Center, Cincinnati, OH, USA.
+FAU - Grooms, Dustin R
+AU  - Grooms DR
+AD  - Ohio Musculoskeletal & Neurological Institute, Ohio University, Athens, OH, USA.
+AD  - Division of Athletic Training, School of Applied Health Sciences and Wellness, 
+      College of Health Sciences & Professions, Ohio University, Athens, OH, USA.
+AD  - Division of Physical Therapy, School of Rehabilitation and Communication 
+      Sciences, College of Health Sciences & Professions, Ohio University, Athens, OH, 
+      USA.
+FAU - Myer, Gregory D
+AU  - Myer GD
+AD  - The SPORT Center, Division of Sports Medicine, Cincinnati Children's Hospital 
+      Medical Center, Cincinnati, OH, USA.
+AD  - Department of Pediatrics and Orthopaedic Surgery, College of Medicine, University 
+      of Cincinnati, Cincinnati, OH, USA.
+AD  - The Micheli Center for Sports Injury Prevention, Waltham, MA, USA.
+AD  - Emory Sports Medicine Center, Atlanta, GA, USA.
+AD  - Emory Sport Performance and Research Center, Flowery Branch, GA, USA.
+AD  - Department of Orthopaedics, Emory University School of Medicine, Atlanta, GA, 
+      USA.
+LA  - eng
+GR  - R01 AR076153/AR/NIAMS NIH HHS/United States
+GR  - R01 AR077248/AR/NIAMS NIH HHS/United States
+GR  - U01 AR067997/AR/NIAMS NIH HHS/United States
+PT  - Journal Article
+DEP - 20201021
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7806167
+MID - NIHMS1658116
+OTO - NOTNLM
+OT  - Batch process
+OT  - GUI
+OT  - ICA-AROMA
+OT  - Python
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2021/01/16 06:00
+MHDA- 2021/01/16 06:01
+PMCR- 2021/01/13
+CRDT- 2021/01/15 06:01
+PHST- 2021/01/15 06:01 [entrez]
+PHST- 2021/01/16 06:00 [pubmed]
+PHST- 2021/01/16 06:01 [medline]
+PHST- 2021/01/13 00:00 [pmc-release]
+AID - 100598 [pii]
+AID - 10.1016/j.softx.2020.100598 [doi]
+PST - ppublish
+SO  - SoftwareX. 2020 Jul-Dec;12:100598. doi: 10.1016/j.softx.2020.100598. Epub 2020 
+      Oct 21.
+
+PMID- 33426260
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20210113
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 12
+DP  - 2020 Jul-Dec
+TI  - pksensi: An R package to apply global sensitivity analysis in physiologically 
+      based kinetic modeling.
+LID - 100609 [pii]
+LID - 10.1016/j.softx.2020.100609 [doi]
+AB  - Sensitivity analysis (SA) is an essential tool for modelers to understand the 
+      influence of model parameters on model outputs. It is also increasingly used in 
+      developing and assessing physiologically based kinetic (PBK) models. For 
+      instance, several studies have applied global SA to reduce the computational 
+      burden in the Bayesian Markov chain Monte Carlo-based calibration process PBK 
+      models. Although several SA algorithms and software packages are available, no 
+      comprehensive software package exists that allows users to seamlessly solve 
+      differential equations in a PBK model, conduct and visualize SA results, and 
+      discriminate between the non-influential model parameters that can be fixed and 
+      those that need calibration. Therefore, we developed an R package, named pksensi, 
+      to make global SA more accessible in PBK modeling. This package can investigate 
+      both uncertainty and sensitivity in PBK models, including those with multivariate 
+      model outputs. It also includes functions to check the convergence of the global 
+      SA results. Overall, pksensi improves the user experience of performing global SA 
+      and can create robust and reproducible results for decision making in PBK model 
+      calibration.
+FAU - Hsieh, Nan-Hung
+AU  - Hsieh NH
+AD  - Veterinary Integrative Biosciences, College of Veterinary Medicine and Biomedical 
+      Sciences, Texas A&M University, College Station, TX, USA.
+FAU - Reisfeld, Brad
+AU  - Reisfeld B
+AD  - Chemical and Biological Engineering and School of Biomedical Engineering, 
+      Colorado State University, Fort Collins, CO, USA.
+FAU - Chiu, Weihsueh A
+AU  - Chiu WA
+AD  - Veterinary Integrative Biosciences, College of Veterinary Medicine and Biomedical 
+      Sciences, Texas A&M University, College Station, TX, USA.
+LA  - eng
+GR  - P42 ES027704/ES/NIEHS NIH HHS/United States
+GR  - U01 FD005838/FD/FDA HHS/United States
+PT  - Journal Article
+DEP - 20201012
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7790364
+MID - NIHMS1658119
+OTO - NOTNLM
+OT  - Global sensitivity analysis
+OT  - Physiologically based kinetic modeling
+OT  - R package
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2021/01/12 06:00
+MHDA- 2021/01/12 06:01
+PMCR- 2021/01/07
+CRDT- 2021/01/11 05:43
+PHST- 2021/01/11 05:43 [entrez]
+PHST- 2021/01/12 06:00 [pubmed]
+PHST- 2021/01/12 06:01 [medline]
+PHST- 2021/01/07 00:00 [pmc-release]
+AID - 100609 [pii]
+AID - 10.1016/j.softx.2020.100609 [doi]
+PST - ppublish
+SO  - SoftwareX. 2020 Jul-Dec;12:100609. doi: 10.1016/j.softx.2020.100609. Epub 2020 
+      Oct 12.
+
+PMID- 32864407
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20200928
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 10
+DP  - 2019 Jul-Dec
+TI  - CameraTransform: A Python package for perspective corrections and image mapping.
+LID - 100333 [pii]
+LID - 10.1016/j.softx.2019.100333 [doi]
+AB  - Camera images and video recordings are simple and non-invasive tools to 
+      investigate animals in their natural habitat. Quantitative evaluations, however, 
+      often require an exact reconstruction of object positions, sizes, and distances 
+      in the image. Here, we provide an open source software package to perform such 
+      calculations. Our approach allows the user to correct for perspective distortion, 
+      transform images to "bird's-eye" view projections, or transform image-coordinates 
+      to real-world coordinates and vice versa. The extrinsic camera parameters that 
+      are necessary to perform such image corrections and transformations (elevation, 
+      tilt/roll angle, and heading of the camera) are obtained from the image using 
+      contextual information such as a visible horizon, GPS coordinates of landmarks, 
+      known object sizes, or images of the same object obtained from different viewing 
+      angles. All mathematical operations are implemented in the Python package 
+      CameraTransform. The performance of the implementation is evaluated using 
+      computer-generated synthetic images with known camera parameters. Moreover, we 
+      test our algorithm on images of emperor penguin colonies, and demonstrate that 
+      the camera tilt and roll angles can be estimated with an error of less than one 
+      degree, and the camera elevation with an error of less than 5%. The 
+      CameraTransform software package simplifies camera matrix-based image 
+      transformations and the extraction of quantitative image information. An 
+      extensive documentation and usage examples in an ecological context are provided 
+      at http://cameratransform.readthedocs.io.
+FAU - Gerum, Richard C
+AU  - Gerum RC
+AD  - Biophysics Group, Department of Physics, University of Erlangen-Nurnberg, 
+      Germany.
+FAU - Richter, Sebastian
+AU  - Richter S
+AD  - Biophysics Group, Department of Physics, University of Erlangen-Nurnberg, 
+      Germany.
+AD  - Applied Ocean Physics and Engineering, Woods Hole Oceanographic Institution, 
+      Woods Hole, MA, USA.
+FAU - Winterl, Alexander
+AU  - Winterl A
+AD  - Biophysics Group, Department of Physics, University of Erlangen-Nurnberg, 
+      Germany.
+AD  - Applied Ocean Physics and Engineering, Woods Hole Oceanographic Institution, 
+      Woods Hole, MA, USA.
+FAU - Mark, Christoph
+AU  - Mark C
+AD  - Biophysics Group, Department of Physics, University of Erlangen-Nurnberg, 
+      Germany.
+FAU - Fabry, Ben
+AU  - Fabry B
+AD  - Biophysics Group, Department of Physics, University of Erlangen-Nurnberg, 
+      Germany.
+FAU - Bohec, Celine Le
+AU  - Bohec CL
+AD  - Centre Scientifique de Monaco, Departement de Biologie Polaire, Principality of 
+      Monaco, Monaco.
+AD  - Universite de Strasbourg, CNRS, IPHC, UMR 7178, Strasbourg, France.
+FAU - Zitterbart, Daniel P
+AU  - Zitterbart DP
+AD  - Biophysics Group, Department of Physics, University of Erlangen-Nurnberg, 
+      Germany.
+AD  - Applied Ocean Physics and Engineering, Woods Hole Oceanographic Institution, 
+      Woods Hole, MA, USA.
+LA  - eng
+GR  - P01 HL120839/HL/NHLBI NIH HHS/United States
+PT  - Journal Article
+DEP - 20191003
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7453838
+MID - NIHMS1546289
+OTO - NOTNLM
+OT  - Camera lens distortions
+OT  - Geo-referencing
+OT  - Perspective projection
+OT  - Quantitative image analysis
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2020/08/31 06:00
+MHDA- 2020/08/31 06:01
+PMCR- 2020/08/28
+CRDT- 2020/09/01 06:00
+PHST- 2020/09/01 06:00 [entrez]
+PHST- 2020/08/31 06:00 [pubmed]
+PHST- 2020/08/31 06:01 [medline]
+PHST- 2020/08/28 00:00 [pmc-release]
+AID - 100333 [pii]
+AID - 10.1016/j.softx.2019.100333 [doi]
+PST - ppublish
+SO  - SoftwareX. 2019 Jul-Dec;10:100333. doi: 10.1016/j.softx.2019.100333. Epub 2019 
+      Oct 3.
+
+PMID- 32607406
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 11
+DP  - 2020 Jan-Jun
+TI  - Automating image-based mesh generation and manipulation tasks in cardiac modeling 
+      workflows using Meshtool.
+PG  - 100454
+LID - 10.1016/j.softx.2020.100454 [doi]
+LID - 100454
+AB  - Advanced cardiac modeling studies rely on the ability to generate and 
+      functionalize personalized in silico models from tomographic multi-label image 
+      stacks. Eventually, this is used for building virtual cohorts that capture the 
+      variability in size, shape, and morphology of individual hearts. Typical modeling 
+      workflows involve a multitude of interactive mesh manipulation steps, rendering 
+      model generation expensive. Meshtool is software specifically designed for 
+      automating all complex mesh manipulation tasks emerging in such workflows by 
+      implementing algorithms for tasks describable as operations on label fields 
+      and/or geometric features. We illustrate how Meshtool increases efficiency and 
+      reduces costs by offering an automatable, high performance mesh manipulation 
+      toolbox.
+FAU - Neic, Aurel
+AU  - Neic A
+AD  - Gottfried Schatz Research Center: Division of Biophysics, Medical University of 
+      Graz, Graz, Austria.
+AD  - NumeriCor GmbH, Graz, Austria.
+FAU - Gsell, Matthias A F
+AU  - Gsell MAF
+AD  - Gottfried Schatz Research Center: Division of Biophysics, Medical University of 
+      Graz, Graz, Austria.
+FAU - Karabelas, Elias
+AU  - Karabelas E
+AD  - Gottfried Schatz Research Center: Division of Biophysics, Medical University of 
+      Graz, Graz, Austria.
+AD  - Department of Biomedical Engineering, School of Biomedical Engineering & Imaging 
+      Sciences, King's College London, London, United Kingdom.
+FAU - Prassl, Anton J
+AU  - Prassl AJ
+AD  - Gottfried Schatz Research Center: Division of Biophysics, Medical University of 
+      Graz, Graz, Austria.
+FAU - Plank, Gernot
+AU  - Plank G
+AD  - Gottfried Schatz Research Center: Division of Biophysics, Medical University of 
+      Graz, Graz, Austria.
+LA  - eng
+GR  - F 3210/FWF_/Austrian Science Fund FWF/Austria
+GR  - I 2760/FWF_/Austrian Science Fund FWF/Austria
+PT  - Journal Article
+DEP - 20200320
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC7326605
+MID - EMS86604
+OTO - NOTNLM
+OT  - Geometric smoothing
+OT  - Mesh generation
+OT  - Mesh manipulation
+COIS- Declaration of competing interest The authors declare that they have no known 
+      competing financial interests or personal relationships that could have appeared 
+      to influence the work reported in this paper.
+EDAT- 2020/07/02 06:00
+MHDA- 2020/07/02 06:01
+PMCR- 2020/06/30
+CRDT- 2020/07/02 06:00
+PHST- 2020/07/02 06:00 [entrez]
+PHST- 2020/07/02 06:00 [pubmed]
+PHST- 2020/07/02 06:01 [medline]
+PHST- 2020/06/30 00:00 [pmc-release]
+AID - 10.1016/j.softx.2020.100454 [doi]
+PST - ppublish
+SO  - SoftwareX. 2020 Jan-Jun;11:100454. doi: 10.1016/j.softx.2020.100454. Epub 2020 
+      Mar 20.
+
+PMID- 35903557
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20240124
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 11
+DP  - 2020 Jan-Jun
+TI  - TreeSwift: A massively scalable Python tree package.
+LID - 100436 [pii]
+LID - 10.1016/j.softx.2020.100436 [doi]
+AB  - Phylogenetic trees are essential to evolutionary biology, and numerous methods 
+      exist that attempt to extract phylogenetic information applicable to a wide range 
+      of disciplines, such as epidemiology and metagenomics. Currently, the three main 
+      Python packages for trees are Bio.Phylo, DendroPy, and the ETE Toolkit, but as 
+      dataset sizes grow, parsing and manipulating ultra-large trees becomes 
+      impractical for these tools. To address this issue, we present TreeSwift, a 
+      user-friendly and massively scalable Python package for traversing and 
+      manipulating trees that is ideal for algorithms performed on ultra-large trees.
+FAU - Moshiri, N
+AU  - Moshiri N
+AD  - Department of Computer Science and Engineering, UC San Diego, 92093, USA.
+LA  - eng
+GR  - P30 AI027767/AI/NIAID NIH HHS/United States
+GR  - P30 AI036214/AI/NIAID NIH HHS/United States
+GR  - UL1 TR001442/TR/NCATS NIH HHS/United States
+PT  - Journal Article
+DEP - 20200304
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9328415
+MID - NIHMS1600146
+OTO - NOTNLM
+OT  - Phylogenetics
+OT  - Python
+OT  - Scalable
+OT  - Tree traversal
+EDAT- 2020/01/01 00:00
+MHDA- 2020/01/01 00:01
+PMCR- 2022/07/27
+CRDT- 2022/07/29 02:04
+PHST- 2022/07/29 02:04 [entrez]
+PHST- 2020/01/01 00:00 [pubmed]
+PHST- 2020/01/01 00:01 [medline]
+PHST- 2022/07/27 00:00 [pmc-release]
+AID - 100436 [pii]
+AID - 10.1016/j.softx.2020.100436 [doi]
+PST - ppublish
+SO  - SoftwareX. 2020 Jan-Jun;11:100436. doi: 10.1016/j.softx.2020.100436. Epub 2020 
+      Mar 4.
+
+PMID- 35419466
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20220503
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 11
+DP  - 2020 Jan-Jun
+TI  - iScore: An MPI supported software for ranking protein-protein docking models 
+      based on a random walk graph kernel and support vector machines.
+LID - 100462 [pii]
+LID - 10.1016/j.softx.2020.100462 [doi]
+AB  - Computational docking is a promising tool to model three-dimensional (3D) 
+      structures of protein-protein complexes, which provides fundamental insights of 
+      protein functions in the cellular life. Singling out near-native models from the 
+      huge pool of generated docking models (referred to as the scoring problem) 
+      remains as a major challenge in computational docking. We recently published 
+      iScore, a novel graph kernel based scoring function. iScore ranks docking models 
+      based on their interface graph similarities to the training interface graph set. 
+      iScore uses a support vector machine approach with random-walk graph kernels to 
+      classify and rank protein-protein interfaces. Here, we present the software for 
+      iScore. The software provides executable scripts that fully automate the 
+      computational workflow. In addition, the creation and analysis of the interface 
+      graph can be distributed across different processes using Message Passing 
+      interface (MPI) and can be offloaded to GPUs thanks to dedicated CUDA kernels.
+FAU - Renaud, Nicolas
+AU  - Renaud N
+AD  - Netherlands eScience Center, Science Park 140, 1098 XG, Amsterdam, The 
+      Netherlands.
+FAU - Jung, Yong
+AU  - Jung Y
+AD  - Bioinformatics & Genomics Graduate Program, Pennsylvania State University, 
+      University Park, PA 16802, USA.
+FAU - Honavar, Vasant
+AU  - Honavar V
+AD  - Bioinformatics & Genomics Graduate Program, Pennsylvania State University, 
+      University Park, PA 16802, USA.
+AD  - College of Information Science & Technology, Pennsylvania State University, 
+      University Park, PA 16802, USA.
+FAU - Geng, Cunliang
+AU  - Geng C
+AD  - Netherlands eScience Center, Science Park 140, 1098 XG, Amsterdam, The 
+      Netherlands.
+AD  - Bijvoet Centre for Biomolecular Research Faculty of Science - Chemistry, Utrecht 
+      University, Padualaan 8, 3584 CH Utrecht, The Netherlands.
+FAU - Bonvin, Alexandre M J J
+AU  - Bonvin AMJJ
+AD  - Bijvoet Centre for Biomolecular Research Faculty of Science - Chemistry, Utrecht 
+      University, Padualaan 8, 3584 CH Utrecht, The Netherlands.
+FAU - Xue, Li C
+AU  - Xue LC
+AD  - Bijvoet Centre for Biomolecular Research Faculty of Science - Chemistry, Utrecht 
+      University, Padualaan 8, 3584 CH Utrecht, The Netherlands.
+AD  - Center for Molecular and Biomolecular Informatics, Radboudumc, Nijmegen, The 
+      Netherlands.
+LA  - eng
+GR  - UL1 TR002014/TR/NCATS NIH HHS/United States
+PT  - Journal Article
+DEP - 20200422
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC9005067
+MID - NIHMS1787719
+OTO - NOTNLM
+OT  - Graph kernel functions
+OT  - MPI
+OT  - Position-specific scoring matrix (PSSM)
+OT  - Protein-protein docking
+OT  - Scoring
+OT  - Support vector machines
+EDAT- 2020/01/01 00:00
+MHDA- 2020/01/01 00:01
+PMCR- 2022/04/12
+CRDT- 2022/04/14 05:22
+PHST- 2022/04/14 05:22 [entrez]
+PHST- 2020/01/01 00:00 [pubmed]
+PHST- 2020/01/01 00:01 [medline]
+PHST- 2022/04/12 00:00 [pmc-release]
+AID - 100462 [pii]
+AID - 10.1016/j.softx.2020.100462 [doi]
+PST - ppublish
+SO  - SoftwareX. 2020 Jan-Jun;11:100462. doi: 10.1016/j.softx.2020.100462. Epub 2020 
+      Apr 22.
+
+PMID- 34291145
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20260425
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 11
+DP  - 2020 Jan-Jun
+TI  - FM-Track: A fiducial marker tracking software for studying cell mechanics in a 
+      three-dimensional environment.
+LID - 100417 [pii]
+LID - 10.1016/j.softx.2020.100417 [doi]
+AB  - Tracking the deformation of fiducial markers in the vicinity of living cells 
+      embedded in compliant synthetic or biological gels is a powerful means to study 
+      cell mechanics and mechanobiology in three-dimensional environments. However, 
+      current approaches to track and quantify three-dimensional (3D) fiducial marker 
+      displacements remain ad-hoc, can be difficult to implement, and may not produce 
+      reliable results. Herein, we present a compact software package entitled 
+      "FM-Track," written in the popular Python language, to facilitate feature-based 
+      particle tracking tailored for 3D cell micromechanical environment studies. 
+      FM-Track contains functions for pre-processing images, running fiducial marker 
+      tracking, and post-processing and visualization. FM-Track can thus aid the study 
+      of cellular mechanics and mechanobiology by providing an extensible software 
+      platform to more reliably extract complex local 3D cell contractile information 
+      in transparent compliant gel systems.
+FAU - Lejeune, Emma
+AU  - Lejeune E
+AD  - James T. Willerson Center for Cardiovascular Modeling and Simulation, Oden 
+      Institute for Computational Engineering and Sciences and the Department of 
+      Biomedical Engineering, The University of Texas at Austin, Austin TX, United 
+      States.
+AD  - The Department of Mechanical Engineering, Boston University, Boston MA, United 
+      States.
+FAU - Khang, Alex
+AU  - Khang A
+AD  - James T. Willerson Center for Cardiovascular Modeling and Simulation, Oden 
+      Institute for Computational Engineering and Sciences and the Department of 
+      Biomedical Engineering, The University of Texas at Austin, Austin TX, United 
+      States.
+FAU - Sansom, Jacob
+AU  - Sansom J
+AD  - James T. Willerson Center for Cardiovascular Modeling and Simulation, Oden 
+      Institute for Computational Engineering and Sciences and the Department of 
+      Biomedical Engineering, The University of Texas at Austin, Austin TX, United 
+      States.
+AD  - The Department of Aerospace Engineering and Engineering Mechanics, The University 
+      of Texas at Austin, Austin TX, United States.
+FAU - Sacks, Michael S
+AU  - Sacks MS
+AD  - James T. Willerson Center for Cardiovascular Modeling and Simulation, Oden 
+      Institute for Computational Engineering and Sciences and the Department of 
+      Biomedical Engineering, The University of Texas at Austin, Austin TX, United 
+      States.
+LA  - eng
+GR  - R01 HL089750/HL/NHLBI NIH HHS/United States
+GR  - R01 HL073021/HL/NHLBI NIH HHS/United States
+GR  - R01 HL068816/HL/NHLBI NIH HHS/United States
+GR  - R01 HL129077/HL/NHLBI NIH HHS/United States
+GR  - R01 HL103723/HL/NHLBI NIH HHS/United States
+GR  - R01 HL119297/HL/NHLBI NIH HHS/United States
+GR  - R01 HL142504/HL/NHLBI NIH HHS/United States
+PT  - Journal Article
+DEP - 20200219
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC8291167
+MID - NIHMS1619196
+OTO - NOTNLM
+OT  - Cell mechanics
+OT  - Fiducial markers
+OT  - Open-source software
+OT  - Particle tracking
+OT  - Traction force microscopy
+EDAT- 2020/01/01 00:00
+MHDA- 2020/01/01 00:01
+PMCR- 2021/07/20
+CRDT- 2021/07/22 06:37
+PHST- 2021/07/22 06:37 [entrez]
+PHST- 2020/01/01 00:00 [pubmed]
+PHST- 2020/01/01 00:01 [medline]
+PHST- 2021/07/20 00:00 [pmc-release]
+AID - 100417 [pii]
+AID - 10.1016/j.softx.2020.100417 [doi]
+PST - ppublish
+SO  - SoftwareX. 2020 Jan-Jun;11:100417. doi: 10.1016/j.softx.2020.100417. Epub 2020 
+      Feb 19.
+
+PMID- 31304228
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20260301
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 9
+DP  - 2019 Jan-Jun
+TI  - MALTA: a calculator for estimating the coverage with shRNA, CRISPR, and cDNA 
+      libraries.
+PG  - 154-160
+LID - 10.1016/j.softx.2019.01.006 [doi]
+AB  - Genetic screens using shRNA, CRISPR, or cDNA libraries rely on adequately 
+      transferring the library into cells for further assay. These libraries can have 
+      many different elements and each element can be present at different copy numbers 
+      within a given pooled library. Calculating how many recipient cells are needed to 
+      adequately sample all or most of the different elements within a library is 
+      important, especially if one wants to compare the outcomes of different genetic 
+      screens that rely on accurately reproducing the starting population of 
+      library-containing cells. Here we present a simple application that starts with a 
+      list of library elements and their abundance and calculates the minimum sampling 
+      number to achieve full transfer of the library to an acceptor cell population to 
+      a user-specified level of probability. Users can adjust several input parameters 
+      including designating a subpopulation over which the calculation is made. 
+      Finally, the program performs a series of Monte Carlo simulations of a 
+      user-specified number of picks to produce an empirically determined distribution 
+      of each library element.
+FAU - Krishnamani, Venkatramanan
+AU  - Krishnamani V
+AD  - Department of Molecular Physiology and Biophysics, University of Iowa, Iowa City, 
+      Iowa, 52242.
+FAU - Stamnes, Mark A
+AU  - Stamnes MA
+AD  - Department of Molecular Physiology and Biophysics, University of Iowa, Iowa City, 
+      Iowa, 52242.
+FAU - Piper, Robert C
+AU  - Piper RC
+AD  - Department of Molecular Physiology and Biophysics, University of Iowa, Iowa City, 
+      Iowa, 52242.
+LA  - eng
+GR  - R01 GM058202/GM/NIGMS NIH HHS/United States
+PT  - Journal Article
+DEP - 20190214
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC6625779
+MID - NIHMS1023851
+OTO - NOTNLM
+OT  - Computation
+OT  - Genetic Screening
+OT  - pooled libraries
+EDAT- 2019/07/16 06:00
+MHDA- 2019/07/16 06:01
+PMCR- 2019/07/12
+CRDT- 2019/07/16 06:00
+PHST- 2019/07/16 06:00 [entrez]
+PHST- 2019/07/16 06:00 [pubmed]
+PHST- 2019/07/16 06:01 [medline]
+PHST- 2019/07/12 00:00 [pmc-release]
+AID - 10.1016/j.softx.2019.01.006 [doi]
+PST - ppublish
+SO  - SoftwareX. 2019 Jan-Jun;9:154-160. doi: 10.1016/j.softx.2019.01.006. Epub 2019 
+      Feb 14.
+
+PMID- 34113706
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20241009
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 10
+DP  - 2019 Jul-Dec
+TI  - Deep learning application engine (DLAE): Development and integration of deep 
+      learning algorithms in medical imaging.
+LID - 100347 [pii]
+LID - 10.1016/j.softx.2019.100347 [doi]
+AB  - Herein we introduce a deep learning (DL) application engine (DLAE) system 
+      concept, present potential uses of it, and describe pathways for its integration 
+      in clinical workflows. An open-source software application was developed to 
+      provide a code-free approach to DL for medical imaging applications. DLAE 
+      supports several DL techniques used in medical imaging, including convolutional 
+      neural networks, fully convolutional networks, generative adversarial networks, 
+      and bounding box detectors. Several example applications using clinical images 
+      were developed and tested to demonstrate the capabilities of DLAE. Additionally, 
+      a model deployment example was demonstrated in which DLAE was used to integrate 
+      two trained models into a commercial clinical software package.
+FAU - Sanders, Jeremiah W
+AU  - Sanders JW
+AD  - Department of Imaging Physics, The University of Texas MD Anderson Cancer Center, 
+      1515 Holcombe Blvd., Unit 1472, Houston, TX 77030, United States of America.
+AD  - Medical Physics Graduate Program, MD Anderson Cancer Center UTHealth Graduate 
+      School of Biomedical Sciences, Houston, 1515 Holcombe Blvd., Unit 1472, TX 77030, 
+      United States of America.
+FAU - Fletcher, Justin R
+AU  - Fletcher JR
+AD  - Odyssey Systems Consulting, LLC, 550 Lipoa Parkway, Kihei, Maui, HI, United 
+      States of America.
+FAU - Frank, Steven J
+AU  - Frank SJ
+AD  - Department of Radiation Oncology, The University of Texas MD Anderson Cancer 
+      Center, 1515 Holcombe Blvd., Unit 1422, Houston, TX 77030, United States of 
+      America.
+FAU - Liu, Ho-Ling
+AU  - Liu HL
+AD  - Department of Imaging Physics, The University of Texas MD Anderson Cancer Center, 
+      1515 Holcombe Blvd., Unit 1472, Houston, TX 77030, United States of America.
+AD  - Medical Physics Graduate Program, MD Anderson Cancer Center UTHealth Graduate 
+      School of Biomedical Sciences, Houston, 1515 Holcombe Blvd., Unit 1472, TX 77030, 
+      United States of America.
+FAU - Johnson, Jason M
+AU  - Johnson JM
+AD  - Department of Diagnostic Radiology, The University of Texas MD Anderson Cancer 
+      Center, 1515 Holcombe Blvd., Unit 1473, Houston, TX 77030, United States of 
+      America.
+FAU - Zhou, Zijian
+AU  - Zhou Z
+AD  - Department of Imaging Physics, The University of Texas MD Anderson Cancer Center, 
+      1515 Holcombe Blvd., Unit 1472, Houston, TX 77030, United States of America.
+FAU - Chen, Henry Szu-Meng
+AU  - Chen HS
+AD  - Department of Imaging Physics, The University of Texas MD Anderson Cancer Center, 
+      1515 Holcombe Blvd., Unit 1472, Houston, TX 77030, United States of America.
+FAU - Venkatesan, Aradhana M
+AU  - Venkatesan AM
+AD  - Medical Physics Graduate Program, MD Anderson Cancer Center UTHealth Graduate 
+      School of Biomedical Sciences, Houston, 1515 Holcombe Blvd., Unit 1472, TX 77030, 
+      United States of America.
+AD  - Department of Diagnostic Radiology, The University of Texas MD Anderson Cancer 
+      Center, 1515 Holcombe Blvd., Unit 1473, Houston, TX 77030, United States of 
+      America.
+FAU - Kudchadker, Rajat J
+AU  - Kudchadker RJ
+AD  - Medical Physics Graduate Program, MD Anderson Cancer Center UTHealth Graduate 
+      School of Biomedical Sciences, Houston, 1515 Holcombe Blvd., Unit 1472, TX 77030, 
+      United States of America.
+AD  - Department of Radiation Physics, The University of Texas MD Anderson Cancer 
+      Center, 1515 Holcombe Blvd., Unit 1420, Houston, TX 77030, United States of 
+      America.
+FAU - Pagel, Mark D
+AU  - Pagel MD
+AD  - Medical Physics Graduate Program, MD Anderson Cancer Center UTHealth Graduate 
+      School of Biomedical Sciences, Houston, 1515 Holcombe Blvd., Unit 1472, TX 77030, 
+      United States of America.
+AD  - Department of Cancer Systems Imaging, The University of Texas MD Anderson Cancer 
+      Center, 1515 Holcombe Blvd., Unit 1907, Houston, TX 77030, United States of 
+      America.
+FAU - Ma, Jingfei
+AU  - Ma J
+AD  - Department of Imaging Physics, The University of Texas MD Anderson Cancer Center, 
+      1515 Holcombe Blvd., Unit 1472, Houston, TX 77030, United States of America.
+AD  - Medical Physics Graduate Program, MD Anderson Cancer Center UTHealth Graduate 
+      School of Biomedical Sciences, Houston, 1515 Holcombe Blvd., Unit 1472, TX 77030, 
+      United States of America.
+LA  - eng
+GR  - P30 CA016672/CA/NCI NIH HHS/United States
+PT  - Journal Article
+DEP - 20191029
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC8188855
+MID - NIHMS1582136
+OTO - NOTNLM
+OT  - Algorithm development
+OT  - Deep learning
+OT  - Medical imaging
+OT  - Software
+COIS- Declaration of competing interest We wish to draw the attention of the Editor to 
+      the following facts, which may be considered as potential conflicts of interest, 
+      and to significant financial contributions to this work. The nature of potential 
+      conflict of interest is described below: Steven J. Frank is a co-founder of C4 
+      Imaging and has ownership interests in this company, and he holds U.S. and 
+      international patents of the C4 seed marker technology. Jingfei Ma holds U.S. 
+      patents licensed to Siemens Healthineers and GE Healthcare and is a consultant 
+      for C4 Imaging.
+EDAT- 2019/07/01 00:00
+MHDA- 2019/07/01 00:01
+PMCR- 2021/06/09
+CRDT- 2021/06/11 06:48
+PHST- 2021/06/11 06:48 [entrez]
+PHST- 2019/07/01 00:00 [pubmed]
+PHST- 2019/07/01 00:01 [medline]
+PHST- 2021/06/09 00:00 [pmc-release]
+AID - 100347 [pii]
+AID - 10.1016/j.softx.2019.100347 [doi]
+PST - ppublish
+SO  - SoftwareX. 2019 Jul-Dec;10:100347. doi: 10.1016/j.softx.2019.100347. Epub 2019 
+      Oct 29.
+
+PMID- 30555886
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20200929
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 8
+DP  - 2018 Jul-Dec
+TI  - A software companion for compressively sensed time-frequency processing of sparse 
+      nonstationary signals.
+PG  - 9-10
+LID - 10.1016/j.softx.2017.08.006 [doi]
+AB  - Compressive sensing is a computational framework for acquisition and processing 
+      of sparse signals at sampling rates below the rates mandated by the Nyquist 
+      sampling theorem. In this paper, we present seven MATLAB functions for 
+      compressive sensing based time-frequency processing of sparse nonstationary 
+      signals. These functions are developed to reproduce figures in our companion 
+      review paper.
+FAU - Sejdic, Ervin
+AU  - Sejdic E
+AD  - Department of Electrical and Computer Engineering, Swanson School of Engineering, 
+      University of Pittsburgh, Pittsburgh, PA, 15261, USA.
+FAU - Orovic, Irena
+AU  - Orovic I
+AD  - Faculty of Electrical Engineering, University of Montenegro, Podgorica, 
+      Montenegro.
+FAU - Stankovic, Srdjan
+AU  - Stankovic S
+AD  - Faculty of Electrical Engineering, University of Montenegro, Podgorica, 
+      Montenegro.
+LA  - eng
+GR  - R01 HD074819/HD/NICHD NIH HHS/United States
+PT  - Journal Article
+DEP - 20170915
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC6290993
+MID - NIHMS907307
+OTO - NOTNLM
+OT  - Compressive sensing
+OT  - nonstationary signals
+OT  - time-frequency analysis
+EDAT- 2018/12/18 06:00
+MHDA- 2018/12/18 06:01
+PMCR- 2019/07/01
+CRDT- 2018/12/18 06:00
+PHST- 2018/12/18 06:00 [entrez]
+PHST- 2018/12/18 06:00 [pubmed]
+PHST- 2018/12/18 06:01 [medline]
+PHST- 2019/07/01 00:00 [pmc-release]
+AID - 10.1016/j.softx.2017.08.006 [doi]
+PST - ppublish
+SO  - SoftwareX. 2018 Jul-Dec;8:9-10. doi: 10.1016/j.softx.2017.08.006. Epub 2017 Sep 
+      15.
+
+PMID- 29104906
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20200930
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 6
+DP  - 2017
+TI  - The Co-regulation Data Harvester: automating gene annotation starting from a 
+      transcriptome database.
+PG  - 165-171
+LID - 10.1016/j.softx.2017.06.006 [doi]
+AB  - Identifying co-regulated genes provides a useful approach for defining 
+      pathway-specific machinery in an organism. To be efficient, this approach relies 
+      on thorough genome annotation, a process much slower than genome sequencing per 
+      se. Tetrahymena thermophila, a unicellular eukaryote, has been a useful model 
+      organism and has a fully sequenced but sparsely annotated genome. One important 
+      resource for studying this organism has been an online transcriptomic database. 
+      We have developed an automated approach to gene annotation in the context of 
+      transcriptome data in T. thermophila, called the Co-regulation Data Harvester 
+      (CDH). Beginning with a gene of interest, the CDH identifies co-regulated genes 
+      by accessing the Tetrahymena transcriptome database. It then identifies their 
+      closely related genes (orthologs) in other organisms by using reciprocal BLAST 
+      searches. Finally, it collates the annotations of those orthologs' functions, 
+      which provides the user with information to help predict the cellular role of the 
+      initial query. The CDH, which is freely available, represents a powerful new tool 
+      for analyzing cell biological pathways in Tetrahymena. Moreover, to the extent 
+      that genes and pathways are conserved between organisms, the inferences obtained 
+      via the CDH should be relevant, and can be explored, in many other systems.
+FAU - Tsypin, Lev M
+AU  - Tsypin LM
+AD  - Department of Molecular Genetics and Cell Biology, University of Chicago, Chicago 
+      IL, 60637.
+FAU - Turkewitz, Aaron P
+AU  - Turkewitz AP
+AD  - Department of Molecular Genetics and Cell Biology, University of Chicago, Chicago 
+      IL, 60637.
+LA  - eng
+GR  - R01 GM105783/GM/NIGMS NIH HHS/United States
+PT  - Journal Article
+DEP - 20170816
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC5663188
+MID - NIHMS907757
+OTO - NOTNLM
+OT  - Automation
+OT  - Bioinformatics
+OT  - Evolution
+OT  - Protists
+EDAT- 2017/11/07 06:00
+MHDA- 2017/11/07 06:01
+PMCR- 2018/08/16
+CRDT- 2017/11/07 06:00
+PHST- 2017/11/07 06:00 [entrez]
+PHST- 2017/11/07 06:00 [pubmed]
+PHST- 2017/11/07 06:01 [medline]
+PHST- 2018/08/16 00:00 [pmc-release]
+AID - 10.1016/j.softx.2017.06.006 [doi]
+PST - ppublish
+SO  - SoftwareX. 2017;6:165-171. doi: 10.1016/j.softx.2017.06.006. Epub 2017 Aug 16.
+
+PMID- 28105462
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20201001
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 5
+DP  - 2016
+TI  - UT Biomedical Informatics Lab (BMIL) Probability Wheel.
+PG  - 211-215
+LID - 10.1016/j.softx.2016.10.001 [doi]
+AB  - A probability wheel app is intended to facilitate communication between two 
+      people, an "investigator" and a "participant," about uncertainties inherent in 
+      decision-making. Traditionally, a probability wheel is a mechanical prop with two 
+      colored slices. A user adjusts the sizes of the slices to indicate the relative 
+      value of the probabilities assigned to them. A probability wheel can improve the 
+      adjustment process and attenuate the effect of anchoring bias when it is used to 
+      estimate or communicate probabilities of outcomes. The goal of this work was to 
+      develop a mobile application of the probability wheel that is portable, easily 
+      available, and more versatile. We provide a motivating example from medical 
+      decision-making, but the tool is widely applicable for researchers in the 
+      decision sciences.
+FAU - Huang, Sheng-Cheng
+AU  - Huang SC
+AD  - Department of Biomedical Engineering, The University of Texas at Austin, 107 W 
+      Dean Keeton Street Stop C0800 Austin, TX 78712, USA; Department of Plastic 
+      Surgery, The University of Texas MD Anderson Cancer Center, 1515 Holcombe Blvd. 
+      Houston, TX 77030, USA.
+FAU - Lee, Sara
+AU  - Lee S
+AD  - Department of Biomedical Engineering, The University of Texas at Austin, 107 W 
+      Dean Keeton Street Stop C0800 Austin, TX 78712, USA.
+FAU - Wang, Allen
+AU  - Wang A
+AD  - Department of Biomedical Engineering, The University of Texas at Austin, 107 W 
+      Dean Keeton Street Stop C0800 Austin, TX 78712, USA.
+FAU - Cantor, Scott B
+AU  - Cantor SB
+AD  - Department of Health Services Research, The University of Texas MD Anderson 
+      Cancer Center, Unit 1444, P.O. Box 301402, Houston, TX 77230-1402, USA.
+FAU - Sun, Clement
+AU  - Sun C
+AD  - Department of Biomedical Engineering, The University of Texas at Austin, 107 W 
+      Dean Keeton Street Stop C0800 Austin, TX 78712, USA; Department of Plastic 
+      Surgery, The University of Texas MD Anderson Cancer Center, 1515 Holcombe Blvd. 
+      Houston, TX 77030, USA.
+FAU - Fan, Kaili
+AU  - Fan K
+AD  - Department of Biomedical Engineering, The University of Texas at Austin, 107 W 
+      Dean Keeton Street Stop C0800 Austin, TX 78712, USA.
+FAU - Reece, Gregory P
+AU  - Reece GP
+AD  - Department of Plastic Surgery, The University of Texas MD Anderson Cancer Center, 
+      1515 Holcombe Blvd. Houston, TX 77030, USA.
+FAU - Kim, Min Soon
+AU  - Kim MS
+AD  - Department of Health Management and Informatics, The University of Missouri, 
+      CE707 Clinical Support & Education Building, DC006.00 Columbia, MO 65212, USA.
+FAU - Markey, Mia K
+AU  - Markey MK
+AD  - Department of Biomedical Engineering, The University of Texas at Austin, 107 W 
+      Dean Keeton Street Stop C0800 Austin, TX 78712, USA; Department of Imaging 
+      Physics, The University of Texas MD Anderson Cancer Center, 1515 Holcombe Blvd. 
+      Houston, TX 77030, USA.
+LA  - eng
+GR  - R01 CA143190/CA/NCI NIH HHS/United States
+PT  - Journal Article
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC5241085
+MID - NIHMS822648
+OTO - NOTNLM
+OT  - Probability wheel
+OT  - cognitive biases
+OT  - decision-making
+OT  - heuristic judgment
+OT  - mobile application
+OT  - preference elicitation
+OT  - probability estimation
+OT  - software development
+EDAT- 2017/01/21 06:00
+MHDA- 2017/01/21 06:01
+PMCR- 2017/01/17
+CRDT- 2017/01/21 06:00
+PHST- 2017/01/21 06:00 [entrez]
+PHST- 2017/01/21 06:00 [pubmed]
+PHST- 2017/01/21 06:01 [medline]
+PHST- 2017/01/17 00:00 [pmc-release]
+AID - 10.1016/j.softx.2016.10.001 [doi]
+PST - ppublish
+SO  - SoftwareX. 2016;5:211-215. doi: 10.1016/j.softx.2016.10.001.
+
+PMID- 29892692
+OWN - NLM
+STAT- PubMed-not-MEDLINE
+LR  - 20250530
+IS  - 2352-7110 (Print)
+IS  - 2352-7110 (Electronic)
+VI  - 6
+DP  - 2017
+TI  - JDFTx: software for joint density-functional theory.
+PG  - 278-284
+LID - 10.1016/j.softx.2017.10.006 [doi]
+AB  - Density-functional theory (DFT) has revolutionized computational prediction of 
+      atomic-scale properties from first principles in physics, chemistry and materials 
+      science. Continuing development of new methods is necessary for accurate 
+      predictions of new classes of materials and properties, and for connecting to 
+      nano- and mesoscale properties using coarse-grained theories. JDFTx is a 
+      fully-featured open-source electronic DFT software designed specifically to 
+      facilitate rapid development of new theories, models and algorithms. Using an 
+      algebraic formulation as an abstraction layer, compact C++11 code automatically 
+      performs well on diverse hardware including GPUs (Graphics Processing Units). 
+      This code hosts the development of joint density-functional theory (JDFT) that 
+      combines electronic DFT with classical DFT and continuum models of liquids for 
+      first-principles calculations of solvated and electrochemical systems. In 
+      addition, the modular nature of the code makes it easy to extend and interface 
+      with, facilitating the development of multi-scale toolkits that connect to ab 
+      initio calculations, e.g. photo-excited carrier dynamics combining electron and 
+      phonon calculations with electromagnetic simulations.
+FAU - Sundararaman, Ravishankar
+AU  - Sundararaman R
+AD  - Department of Materials Science and Engineering, Rensselaer Polytechnic 
+      Institute, Troy, NY, 12180.
+FAU - Letchworth-Weaver, Kendra
+AU  - Letchworth-Weaver K
+AD  - Center for Nanoscale Materials, Argonne National Laboratory, Lemont, IL 60439.
+FAU - Schwarz, Kathleen A
+AU  - Schwarz KA
+AD  - National Institute of Standards and Technology, Material Measurement Laboratory, 
+      Gaithersburg, MD, 20899.
+FAU - Gunceler, Deniz
+AU  - Gunceler D
+AD  - Department of Physics, Cornell University, Ithaca, NY 14853.
+FAU - Ozhabes, Yalcin
+AU  - Ozhabes Y
+AD  - Department of Physics, Cornell University, Ithaca, NY 14853.
+FAU - Arias, T A
+AU  - Arias TA
+AD  - Department of Physics, Cornell University, Ithaca, NY 14853.
+LA  - eng
+GR  - 9999-NIST/ImNIST/Intramural NIST DOC/United States
+PT  - Journal Article
+DEP - 20171114
+PL  - Netherlands
+TA  - SoftwareX
+JT  - SoftwareX
+JID - 101660267
+PMC - PMC5992620
+MID - NIHMS961554
+OTO - NOTNLM
+OT  - 31.15.A-
+OT  - 72.20.Ht
+OT  - 73.20.Mf
+OT  - 82.20.Yn
+OT  - 82.45.Jn
+OT  - Density functional theory
+OT  - Electrochemistry
+OT  - Electronic structure
+OT  - Light-matter interactions
+OT  - Solvation
+EDAT- 2017/01/01 00:00
+MHDA- 2017/01/01 00:01
+PMCR- 2018/11/14
+CRDT- 2018/06/13 06:00
+PHST- 2018/06/13 06:00 [entrez]
+PHST- 2017/01/01 00:00 [pubmed]
+PHST- 2017/01/01 00:01 [medline]
+PHST- 2018/11/14 00:00 [pmc-release]
+AID - 10.1016/j.softx.2017.10.006 [doi]
+PST - ppublish
+SO  - SoftwareX. 2017;6:278-284. doi: 10.1016/j.softx.2017.10.006. Epub 2017 Nov 14.
+
