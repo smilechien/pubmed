@@ -1,15 +1,53 @@
+# PATCH_2026_06_02_SEPARATE_JOURNAL_ONLY_AND_MIXED_AUTHOR_JOURNAL
+# VERIFIED_NO_STANDALONE_BURST_TABS_2026_05_28
+# PATCHED_FROM_USER_UPLOADED_VERIFIED2_WITH_SLOPE_3D_DASHBOARD_HEATMAP3_2026_05_28
+# PATCHED_AUTHOR_BYLINE_COUNTS_ANY_BYLINE_AND_FIRST_LAST_2026_05_30
 if (file.exists(".Renviron")) {
   readRenviron(".Renviron")
 }
 
 # ---- IP module (shared gate) ----
 APP_DIR <- tryCatch(normalizePath(getwd(), winslash = "/", mustWork = FALSE), error = function(e) getwd())
+
+# ---- SAFE: source plotting modules if present (stable app keeps homepage unchanged) ----
+.safe_source_if_exists <- function(paths) {
+  for (p in paths) {
+    if (file.exists(p)) {
+      try(source(p, local = FALSE, encoding = "UTF-8"), silent = TRUE)
+      return(invisible(TRUE))
+    }
+  }
+  invisible(FALSE)
+}
+.safe_source_if_exists(c(file.path(APP_DIR, "renderSSplot(81).R"), file.path(APP_DIR, "renderSSplot(80).R"), file.path(APP_DIR, "renderSSplot(79).R"), file.path(APP_DIR, "renderSSplot.R"), file.path(APP_DIR, "renderSSplot(78).R")))
+.safe_source_if_exists(c(file.path(APP_DIR, "kano(63).R"), file.path(APP_DIR, "kano.R"), file.path(APP_DIR, "kano(62).R")))
+.safe_source_if_exists(c(file.path(APP_DIR, "flca_ms_sil_module.R"), file.path(APP_DIR, "flca_ma_sil_module.R")))
+if (exists("run_flca_ms_sil_runner", mode = "function")) run_flca_ms_sil <- run_flca_ms_sil_runner
+
+
+# ---- Load SSplot/Kano modules (support both stable and uploaded filenames) ----
+for (.ss_file in c("renderSSplot(81).R", "renderSSplot(80).R", "renderSSplot(79).R", "renderSSplot.R", "renderSSplot(78).R")) {
+  .ss_path <- file.path(APP_DIR, .ss_file)
+  if (file.exists(.ss_path)) try(source(.ss_path, local = FALSE, encoding = "UTF-8"), silent = TRUE)
+}
+for (.kano_file in c("kano(63).R", "kano.R", "kano(62).R")) {
+  .kano_path <- file.path(APP_DIR, .kano_file)
+  if (file.exists(.kano_path)) try(source(.kano_path, local = FALSE, encoding = "UTF-8"), silent = TRUE)
+}
+# ---- Load FLCA-MA-SIL module if present ----
+for (.flca_file in c("flca_ms_sil_module.R", "flca_ma_sil_module.R")) {
+  .flca_path <- file.path(APP_DIR, .flca_file)
+  if (file.exists(.flca_path)) try(source(.flca_path, local = FALSE, encoding = "UTF-8"), silent = TRUE)
+}
+if (exists("run_flca_ms_sil_runner", mode = "function")) run_flca_ms_sil <- run_flca_ms_sil_runner
+if (exists("run_flca_ma_sil_runner", mode = "function")) run_flca_ms_sil <- run_flca_ma_sil_runner
+
 if (file.exists(file.path(APP_DIR, "ipmodule.R"))) {
   source(file.path(APP_DIR, "ipmodule.R"), local = FALSE)
 }
 PERM_PUBMED_XML <- file.path(tempdir(), "pubmed.xml") 
 PERM_PUBMED_MEDLINE <- file.path(tempdir(), "pubmed_medline.txt") 
-PERM_PUBMED_TXT <- file.path(tempdir(), "uploaded_pubmed_medline.txt")
+PERM_PUBMED_TXT <- file.path(tempdir(), "uploaded_pubmed.txt")
 options(shiny.error = function() {
   message("SHINY ERROR: ", geterrmessage())
 })
@@ -44,7 +82,7 @@ parse_pmids_from_medline_txt <- function(path){
 PUBMED_API_KEY <- Sys.getenv("PUBMED_API_KEY")
 
 # Permanent path for uploaded MEDLINE txt (prevents Shiny temp expiry)
-PERM_PUBMED_TXT <- file.path(getwd(), "uploaded_pubmed_medline.txt")
+PERM_PUBMED_TXT <- file.path(getwd(), "uploaded_pubmed.txt")
 
 # --- FIX: wrap zip logic into a function (prevents unmatched braces) ---
 .webzip_zip_dir <- function(download_dir, zipfile) {
@@ -657,6 +695,9 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(maps)
   library(htmlwidgets)
+  if (requireNamespace("reticulate", quietly = TRUE)) library(reticulate)
+  if (requireNamespace("uwot", quietly = TRUE)) library(uwot)
+  if (requireNamespace("ggraph", quietly = TRUE)) library(ggraph)
 
 # =========================================================
 # Shinyapps-safe writable paths
@@ -670,7 +711,7 @@ is_cloud <- function() {
 
 APP_DIR <- tryCatch(normalizePath(getwd(), winslash="/", mustWork=FALSE), error=function(e) getwd())
 
-PERM_PUBMED_TXT <- if (is_cloud()) file.path(tempdir(), "uploaded_pubmed_medline.txt") else PERM_PUBMED_TXT
+PERM_PUBMED_TXT <- if (is_cloud()) file.path(tempdir(), "uploaded_pubmed.txt") else PERM_PUBMED_TXT
 PERM_PUBMED_XML <- if (is_cloud()) file.path(tempdir(), "pubmed.xml") else PERM_PUBMED_XML
 PERM_PUBMED_MEDLINE <- if (is_cloud()) file.path(tempdir(), "pubmed_medline.txt") else PERM_PUBMED_MEDLINE
 
@@ -697,6 +738,414 @@ source("ipmodule.R")
   r/(1+r)
 }
 
+
+
+
+# ---- BCa/EIS helpers: conditional follower bootstrap for AAC/EIS elbow identification ----
+# IMPORTANT METHOD CHANGE:
+# For each candidate rank i, x[i] is fixed as the tested value.
+# Only the lower-ranked followers x[(i+1):n] are bootstrapped.
+# This prevents the candidate/top value from being duplicated or removed during bootstrap.
+# BCa/EIS is computed only when there are at least 3 followers after the candidate.
+aac3 <- function(x1, x2, x3) {
+  x <- suppressWarnings(as.numeric(c(x1, x2, x3)))
+  if (any(!is.finite(x)) || any(x <= 0)) return(NA_real_)
+  (x[1] / x[2]) / (x[2] / x[3])
+}
+
+.scan_one_conditional_bca <- function(self_value, followers, R = 500, cutoff = 2.0, conf = 0.95) {
+  followers <- suppressWarnings(as.numeric(followers))
+  followers <- sort(followers[is.finite(followers) & followers > 0], decreasing = TRUE)
+
+  if (!is.finite(self_value) || self_value <= 0) {
+    return(list(
+      AAC = NA_real_, BCa_lower = NA_real_, BCa_upper = NA_real_,
+      decision = "No BCa/EIS", EIS_point = NA_real_,
+      reason = "Candidate value is not a positive finite number."
+    ))
+  }
+
+  if (length(followers) < 3) {
+    return(list(
+      AAC = NA_real_, BCa_lower = NA_real_, BCa_upper = NA_real_,
+      decision = "No BCa/EIS", EIS_point = NA_real_,
+      reason = paste0("Fewer than 3 followers after this rank (n_followers=", length(followers), ").")
+    ))
+  }
+
+  obs_r <- aac3(self_value, followers[1], followers[2])
+
+  stat_fun <- function(data, idx) {
+    d <- sort(data[idx], decreasing = TRUE)
+    d <- d[is.finite(d) & d > 0]
+    if (length(d) < 2) return(NA_real_)
+    aac3(self_value, d[1], d[2])
+  }
+
+  bt <- boot::boot(followers, stat_fun, R = R)
+  boot_vals <- suppressWarnings(as.numeric(bt$t[, 1]))
+  boot_vals <- boot_vals[is.finite(boot_vals)]
+
+  ci <- tryCatch(
+    boot::boot.ci(bt, type = "bca", conf = conf),
+    error = function(e) NULL
+  )
+
+  if (!is.null(ci) && !is.null(ci$bca)) {
+    lower <- suppressWarnings(as.numeric(ci$bca[4]))
+    upper <- suppressWarnings(as.numeric(ci$bca[5]))
+    reason <- "BCa interval computed by fixing the candidate and bootstrapping only lower-ranked followers."
+  } else if (length(boot_vals) >= 10) {
+    lower <- as.numeric(stats::quantile(boot_vals, probs = (1 - conf) / 2, na.rm = TRUE, names = FALSE))
+    upper <- as.numeric(stats::quantile(boot_vals, probs = 1 - (1 - conf) / 2, na.rm = TRUE, names = FALSE))
+    reason <- "BCa unavailable; percentile bootstrap fallback used by fixing the candidate and resampling followers."
+  } else {
+    lower <- NA_real_
+    upper <- NA_real_
+    reason <- "Bootstrap interval unavailable because too few finite bootstrap AAC values were produced."
+  }
+
+  decision <- ifelse(
+    is.finite(lower) && lower > cutoff,
+    "Significant elbow",
+    ifelse(is.finite(upper) && upper < cutoff, "Not elbow", "Uncertain")
+  )
+
+  list(
+    AAC = obs_r,
+    BCa_lower = lower,
+    BCa_upper = upper,
+    decision = decision,
+    EIS_point = lower / cutoff,
+    reason = reason
+  )
+}
+
+scan_aac_bca <- function(x, R = 500, cutoff = 2.0, conf = 0.95, progress = NULL) {
+  if (!requireNamespace("boot", quietly = TRUE)) {
+    stop("Package 'boot' is required for BCa/EIS. Please install.packages('boot').", call. = FALSE)
+  }
+
+  x <- suppressWarnings(as.numeric(x))
+  x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+  n <- length(x)
+  if (n < 5) stop("BCa/EIS requires at least n >= 5 positive values; n >= 20 is recommended for stable intervals.", call. = FALSE)
+
+  # Scan every ranked candidate. BCa/EIS is reported only where >=3 followers are available.
+  total_points <- n
+  out <- lapply(seq_len(n), function(i) {
+    if (is.function(progress)) progress(i, total_points)
+
+    self_value <- x[i]
+    followers <- if (i < n) x[(i + 1):n] else numeric(0)
+    f1 <- if (length(followers) >= 1) followers[1] else NA_real_
+    f2 <- if (length(followers) >= 2) followers[2] else NA_real_
+    f3 <- if (length(followers) >= 3) followers[3] else NA_real_
+
+    z <- .scan_one_conditional_bca(
+      self_value = self_value,
+      followers = followers,
+      R = R,
+      cutoff = cutoff,
+      conf = conf
+    )
+
+    data.frame(
+      point_index = i,
+      point_value = self_value,
+      x_self = self_value,
+      follower1 = f1,
+      follower2 = f2,
+      follower3 = f3,
+      n_followers = length(followers),
+      AAC = z$AAC,
+      BCa_lower = z$BCa_lower,
+      BCa_upper = z$BCa_upper,
+      cutoff = cutoff,
+      decision = z$decision,
+      EIS_point = z$EIS_point,
+      BCa_reason = z$reason,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  do.call(rbind, out)
+}
+
+# ---- BCa/EIS manual-value parser ----
+.parse_bca_values <- function(txt) {
+  if (is.null(txt) || !nzchar(txt)) return(numeric(0))
+  txt <- enc2utf8(as.character(txt))
+  txt <- gsub("[，；、]+", " ", txt)
+  txt <- gsub("[,;\\t\\r\\n]+", " ", txt)
+  z <- unlist(strsplit(txt, "[[:space:]]+", perl = TRUE))
+  z <- trimws(z)
+  z <- z[nzchar(z)]
+  x <- suppressWarnings(as.numeric(z))
+  x <- x[is.finite(x) & x > 0]
+  sort(x, decreasing = TRUE)
+}
+
+
+# ---- BCa/EIS summary helper ----
+# EIS = max(BCa_lower / cutoff). This converts the BCa evidence for an elbow
+# into an interpretable evidence score: EIS > 1 means BCa_lower exceeds cutoff,
+# therefore the elbow is statistically supported.
+summarize_bca_eis <- function(df, cutoff = 2.0) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+    return(data.frame(
+      selected_point = NA_integer_, selected_value = NA_real_, AAC = NA_real_,
+      BCa_lower = NA_real_, BCa_upper = NA_real_, EIS = NA_real_,
+      classification = "No result", rule = "No BCa/EIS result available.",
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  df$point_index <- suppressWarnings(as.numeric(df$point_index))
+  df$point_value <- suppressWarnings(as.numeric(df$point_value))
+  df$AAC <- suppressWarnings(as.numeric(df$AAC))
+  df$BCa_lower <- suppressWarnings(as.numeric(df$BCa_lower))
+  df$BCa_upper <- suppressWarnings(as.numeric(df$BCa_upper))
+  df$cutoff <- cutoff
+  df$EIS <- df$BCa_lower / cutoff
+
+  sig <- which(is.finite(df$BCa_lower) & df$BCa_lower > cutoff)
+  if (length(sig) > 0) {
+    k <- sig[1]
+    class <- "Significant elbow"
+    rule <- paste0("Selected the first point where BCa lower bound > cutoff (",
+                   round(df$BCa_lower[k], 3), " > ", cutoff, ").")
+  } else {
+    cand <- which(is.finite(df$EIS))
+    if (!length(cand)) cand <- which(is.finite(df$AAC))
+    if (length(cand)) {
+      k <- cand[which.max(df$EIS[cand])]
+      class <- "No significant elbow"
+      rule <- "No point had BCa lower bound > cutoff. The displayed point is the strongest non-significant candidate based on max EIS = BCa_lower/cutoff."
+    } else {
+      k <- 1
+      class <- "No significant elbow"
+      rule <- "No finite BCa/EIS candidate was available."
+    }
+  }
+
+  data.frame(
+    selected_point = df$point_index[k],
+    selected_value = df$point_value[k],
+    AAC = df$AAC[k],
+    BCa_lower = df$BCa_lower[k],
+    BCa_upper = df$BCa_upper[k],
+    EIS = df$EIS[k],
+    classification = class,
+    rule = rule,
+    stringsAsFactors = FALSE
+  )
+}
+
+
+
+# ---- Top-1 conditional BCa/EIS helper ----
+# Purpose: test whether the top-ranked value is a stable dominance elbow.
+# The top-1 value is fixed, and only the remaining lower-ranked values are bootstrapped.
+# This avoids the unstable 3-point bootstrap case where the top value may be duplicated or removed.
+.aac_coef_from_or <- function(r) {
+  r <- suppressWarnings(as.numeric(r))
+  r / (1 + r)
+}
+
+scan_top1_bca_eis <- function(x, R = 500, cutoff_coef = 0.70, conf = 0.95) {
+  if (!requireNamespace("boot", quietly = TRUE)) {
+    stop("Package 'boot' is required for Top-1 BCa/EIS. Please install.packages('boot').", call. = FALSE)
+  }
+
+  x <- suppressWarnings(as.numeric(x))
+  x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+  n <- length(x)
+  if (n < 5) stop("Top-1 BCa/EIS requires at least 5 positive values.", call. = FALSE)
+
+  top1 <- x[1]
+  pool <- x[-1]
+  pool <- pool[is.finite(pool) & pool > 0]
+  if (length(pool) < 3) stop("Top-1 BCa/EIS requires at least 3 followers below top 1.", call. = FALSE)
+
+  obs_or <- aac3(top1, pool[1], pool[2])
+  obs_coef <- .aac_coef_from_or(obs_or)
+
+  stat_fun <- function(data, idx) {
+    d <- sort(data[idx], decreasing = TRUE)
+    if (length(d) < 2 || any(!is.finite(d[1:2])) || any(d[1:2] <= 0)) return(NA_real_)
+    .aac_coef_from_or(aac3(top1, d[1], d[2]))
+  }
+
+  bt <- boot::boot(pool, stat_fun, R = R)
+  boot_vals <- suppressWarnings(as.numeric(bt$t[, 1]))
+  boot_vals <- boot_vals[is.finite(boot_vals)]
+
+  ci <- tryCatch(
+    boot::boot.ci(bt, type = "bca", conf = conf),
+    error = function(e) NULL
+  )
+
+  if (!is.null(ci) && !is.null(ci$bca)) {
+    lower <- suppressWarnings(as.numeric(ci$bca[4]))
+    upper <- suppressWarnings(as.numeric(ci$bca[5]))
+    ci_method <- "BCa"
+  } else if (length(boot_vals) >= 10) {
+    lower <- as.numeric(stats::quantile(boot_vals, probs = (1 - conf) / 2, na.rm = TRUE, names = FALSE))
+    upper <- as.numeric(stats::quantile(boot_vals, probs = 1 - (1 - conf) / 2, na.rm = TRUE, names = FALSE))
+    ci_method <- "Percentile fallback"
+  } else {
+    lower <- NA_real_; upper <- NA_real_; ci_method <- "CI unavailable"
+  }
+
+  eis <- lower / cutoff_coef
+  decision <- ifelse(
+    is.finite(lower) && lower >= cutoff_coef,
+    "BCa-confirmed top-1 elbow",
+    ifelse(is.finite(obs_coef) && obs_coef >= cutoff_coef,
+           "Strong observed top-1 elbow; not BCa-confirmed",
+           "Not top-1 elbow")
+  )
+
+  data.frame(
+    top1 = top1,
+    x2 = pool[1],
+    x3 = pool[2],
+    AAC_OR = obs_or,
+    AAC_coef = obs_coef,
+    CI_lower = lower,
+    CI_upper = upper,
+    cutoff_coef = cutoff_coef,
+    EIS = eis,
+    decision = decision,
+    ci_method = ci_method,
+    R = R,
+    conf = conf,
+    stringsAsFactors = FALSE
+  )
+}
+
+
+
+# ---- General Top-k conditional BCa/EIS helper (k = 1, 2, or 3) ----
+# The candidate at rank k is fixed. Only lower-ranked followers after k are resampled.
+# AAC_OR = (candidate/follower1)/(follower1/follower2). EIS_OR = CI_lower_OR / AAC_OR cutoff.
+scan_topk_bca_eis <- function(x, k = 1, R = 500, cutoff_or = 2.0, conf = 0.95) {
+  if (!requireNamespace("boot", quietly = TRUE)) {
+    stop("Package 'boot' is required for Top-k BCa/EIS. Please install.packages('boot').", call. = FALSE)
+  }
+  x <- suppressWarnings(as.numeric(x))
+  x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+  n <- length(x)
+  k <- suppressWarnings(as.integer(k[1]))
+  if (!is.finite(k) || !(k %in% c(1L, 2L, 3L))) k <- 1L
+  if (n < 5) stop("Top-k BCa/EIS requires at least 5 positive values.", call. = FALSE)
+  if (n - k < 3) stop(paste0("Top-", k, " BCa/EIS requires at least 3 followers below the candidate."), call. = FALSE)
+
+  candidate <- x[k]
+  followers <- x[(k + 1):n]
+  z <- .scan_one_conditional_bca(
+    self_value = candidate,
+    followers = followers,
+    R = R,
+    cutoff = cutoff_or,
+    conf = conf
+  )
+  coef <- .aac_coef_from_or(z$AAC)
+  lower_coef <- .aac_coef_from_or(z$BCa_lower)
+  upper_coef <- .aac_coef_from_or(z$BCa_upper)
+
+  data.frame(
+    selected_rank = k,
+    candidate = candidate,
+    follower1 = followers[1],
+    follower2 = followers[2],
+    follower3 = followers[3],
+    n_followers = length(followers),
+    AAC_OR = z$AAC,
+    AAC_coef = coef,
+    CI_lower_OR = z$BCa_lower,
+    CI_upper_OR = z$BCa_upper,
+    CI_lower_coef = lower_coef,
+    CI_upper_coef = upper_coef,
+    AAC_OR_cutoff = cutoff_or,
+    EIS_OR = z$BCa_lower / cutoff_or,
+    decision = z$decision,
+    BCa_reason = z$reason,
+    stringsAsFactors = FALSE
+  )
+}
+
+.bca_caption_text <- function(z, source_label = "Editable values") {
+  if (is.null(z) || !is.data.frame(z) || !nrow(z)) return("No Top-k BCa/EIS result available.")
+  paste0(
+    "Top-", z$selected_rank[1], " conditional BCa/EIS result (source: ", source_label, "). ",
+    "The candidate value was fixed at ", round(z$candidate[1], 3),
+    ", and only lower-ranked followers were resampled. ",
+    "AAC_OR = ", round(z$AAC_OR[1], 3),
+    ", BCa CI_OR = [", round(z$CI_lower_OR[1], 3), ", ", round(z$CI_upper_OR[1], 3), "]",
+    ", AAC_OR cutoff = ", round(z$AAC_OR_cutoff[1], 3),
+    ", and EIS_OR = BCa_lower_OR / cutoff = ", round(z$EIS_OR[1], 3), ". ",
+    "The decision was: ", z$decision[1], ". ",
+    "Criterion: the elbow is statistically supported when BCa lower bound of AAC_OR exceeds the AAC_OR cutoff, equivalently EIS_OR > 1."
+  )
+}
+
+.plot_topk_dominance <- function(x, z, main_title = "Top-k Dominance vs Rest: Conditional BCa/EIS") {
+  x <- suppressWarnings(as.numeric(x))
+  x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+  if (length(x) < 5) stop("Top-k dominance plot requires at least 5 positive values.", call. = FALSE)
+  if (is.null(z) || !is.data.frame(z) || !nrow(z)) stop("Top-k result is unavailable.", call. = FALSE)
+  k <- suppressWarnings(as.integer(z$selected_rank[1]))
+  if (!is.finite(k) || k < 1 || k > length(x)) k <- 1L
+
+  ranks <- seq_along(x)
+  y_max <- max(x, na.rm = TRUE)
+  y_min <- min(x[x > 0], na.rm = TRUE)
+  ylim <- c(max(0.1, y_min * 0.75), y_max * 1.35)
+
+  plot(
+    ranks, x,
+    type = "b", pch = 19, lwd = 2, log = "y",
+    xlab = "Rank position",
+    ylab = "Entity count / score (log scale)",
+    main = main_title,
+    ylim = ylim
+  )
+
+  if (length(x) >= 4) {
+    rest_r <- ranks[(k + 1):length(x)]
+    rest_x <- x[(k + 1):length(x)]
+    if (length(rest_x) >= 4) {
+      sm <- stats::lowess(rest_r, rest_x, f = 2/3, iter = 1)
+      lines(sm$x, sm$y, lwd = 3, lty = 1)
+    }
+  }
+
+  points(k, x[k], pch = 19, cex = 2.4, col = "red")
+  text(k, x[k], labels = paste0("Top ", k, "\n", round(x[k], 1)), pos = 4, col = "red", cex = 0.95)
+
+  comp_idx <- (k + 1):min(length(x), k + 3)
+  if (length(comp_idx)) {
+    points(comp_idx, x[comp_idx], pch = 19, cex = 1.7, col = "orange")
+    text(comp_idx, x[comp_idx], labels = paste0("f", seq_along(comp_idx), "\n", round(x[comp_idx], 1)), pos = 4, col = "orange", cex = 0.8)
+    segments(k, x[k], comp_idx[1], x[comp_idx[1]], lwd = 2, col = "red")
+    if (length(comp_idx) >= 2) segments(comp_idx[1], x[comp_idx[1]], comp_idx[2], x[comp_idx[2]], lwd = 2, col = "orange")
+  }
+
+  info <- paste0(
+    "Top-", k, " candidate\n",
+    "AAC_OR = ", round(z$AAC_OR[1], 2), "\n",
+    "BCa CI_OR = [", round(z$CI_lower_OR[1], 2), ", ", round(z$CI_upper_OR[1], 2), "]\n",
+    "EIS_OR = ", round(z$EIS_OR[1], 2), "\n",
+    z$decision[1]
+  )
+  legend("topright", legend = info, bty = "n", cex = 0.9)
+  legend("bottomleft",
+         legend = c("Ranked values (auto-sorted)", "LOWESS of followers", "Fixed candidate", "Follower comparators"),
+         lty = c(1, 1, NA, NA), pch = c(19, NA, 19, 19),
+         lwd = c(2, 3, NA, NA), col = c("black", "black", "red", "orange"), bty = "n")
+}
 
 # ---- country name harmonization for world map (adaptive to map_data names) ----
 .normalize_country_for_map <- function(x, world_regions){
@@ -732,10 +1181,10 @@ world_regions <- sort(unique(.world_map_data$region))
   "South Korea" = "Korea"
 )
 source("pubmed_parse_biblio.R")
-tryCatch({ source("kano.R", local = FALSE); cat("[BOOT] sourced: kano.R
+tryCatch({ if (file.exists("kano(63).R")) source("kano(63).R", local = FALSE, encoding = "UTF-8") else if (file.exists("kano.R")) source("kano.R", local = FALSE, encoding = "UTF-8") else if (file.exists("kano(62).R")) source("kano(62).R", local = FALSE, encoding = "UTF-8"); cat("[BOOT] sourced: kano.R
 ") }, error=function(e){ cat("[BOOT][ERR] kano.R:", e$message, "
 ") })
-try({ source("sankey.R"); cat("[BOOT] sourced: sankey.R\n") }, silent=TRUE)
+try({ if (file.exists("sankey(59).R")) source("sankey(59).R", local = FALSE, encoding = "UTF-8") else source("sankey.R", local = FALSE, encoding = "UTF-8"); cat("[BOOT] sourced: sankey.R\n") }, silent=TRUE)
 
 # ---- Sankey color series (cluster number -> fixed color) ----
 specified_colors <- c(
@@ -850,9 +1299,23 @@ render_author_sankey <- function(edges, nodes = NULL) {
 }
 
 # # ---- Prefer renderSSplot.R for SS panel drawing (REAL SSplot) ----
-if (file.exists("renderSSplot.R")) {
+# Prefer newest uploaded renderer, then stable fallbacks.
+# IMPORTANT: renderSSplot(81).R contains the one-AAC-per-cluster fix.
+if (file.exists("renderSSplot(81).R")) {
+  source("renderSSplot(81).R", local = FALSE, encoding = "UTF-8")
+  cat("[BOOT] sourced: renderSSplot(81).R\\n")
+} else if (file.exists("renderSSplot(80).R")) {
+  source("renderSSplot(80).R", local = FALSE, encoding = "UTF-8")
+  cat("[BOOT] sourced: renderSSplot(80).R\\n")
+} else if (file.exists("renderSSplot(79).R")) {
+  source("renderSSplot(79).R", local = FALSE, encoding = "UTF-8")
+  cat("[BOOT] sourced: renderSSplot(79).R\\n")
+} else if (file.exists("renderSSplot.R")) {
   source("renderSSplot.R", local = FALSE, encoding = "UTF-8")
   cat("[BOOT] sourced: renderSSplot.R\\n")
+} else if (file.exists("renderSSplot(78).R")) {
+  source("renderSSplot(78).R", local = FALSE, encoding = "UTF-8")
+  cat("[BOOT] sourced: renderSSplot(78).R\\n")
 } else {
   stop("renderSSplot.R not found in app folder")
 }
@@ -880,6 +1343,16 @@ ui <- fluidPage(
     .small-note { font-size: 12px; color: #555; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
     .card { border: 1px solid #e5e5e5; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fff; }
+    .nav-tabs > li > a[data-value='AAC'],
+    .nav-tabs > li > a[data-value='BCa/EIS'],
+    .nav-tabs > li > a[data-value='TAAA2']{ color:#d00000 !important; font-weight:700 !important; }
+    .nav-tabs > li.active > a[data-value='AAC'],
+    .nav-tabs > li.active > a[data-value='BCa/EIS'],
+    .nav-tabs > li.active > a[data-value='TAAA2'],
+    .nav-tabs > li.active > a[data-value='AAC']:focus,
+    .nav-tabs > li.active > a[data-value='BCa/EIS']:focus,
+    .nav-tabs > li.active > a[data-value='TAAA2']:focus{ background:#fff0f0 !important; border-top:3px solid #d00000 !important; color:#b00000 !important; }
+    .bca-progress-note{margin-top:8px; padding:8px 10px; border-left:4px solid #f0ad4e; background:#fff8e8;}
 
 	    /* Floating contact button (always visible, does not alter homepage layout) */
     .contact-fab{
@@ -1111,12 +1584,44 @@ titlePanel("All-in-one Bibliometrics Dashboard (PubMed → Author/Country/Instit
           fileInput("pubmed_txt", "Upload PubMed .txt (MEDLINE export)", accept = ".txt"),
           checkboxInput('use_uploaded_txt', "Use uploaded MEDLINE (ignore query)", value = TRUE),
           actionButton("btn_clear_uploaded", "Clear uploaded file"),
-          tags$div(class="small-note","After upload, the file is saved to ./uploaded_pubmed.txt automatically. Then click Fetch PubMed to run using this file."),
+          tags$hr(),
+          h4("AMA/PubMed/Google Scholar/NCKU Scopus journal extraction"),
+          numericInput("ama_top_n", "Top N journals", value = 20, min = 1, max = 100, step = 1),
+          actionButton("run_ama_journals", "Run AMA journal extraction", class = "btn-info", width = "100%"),
+          tags$div(style="margin-top:8px;"),
+          actionButton("run_ama_author_journal", "Run AMA author/journal extraction", class = "btn-warning", width = "100%"),
+          tags$div(style="margin-top:8px;"),
+          actionButton("run_ama_author_aac", "Run AMA author AAC (1st+Last only)", class = "btn-danger", width = "100%"),
+          tags$div(class="small-note", "This extra run uses only the first and last authors from each reference/article; journals are excluded."),
+          tags$div(style="margin-top:8px;"),
+          checkboxInput("use_ama_textarea", "Run journal/authors from textarea below", value = FALSE),
+          tags$div(class="small-note", "Select which pasted-reference parsers are allowed. Use one source at a time for the cleanest extraction; mixed mode is allowed but only normalized records are kept."),
+          checkboxInput("ref_src_ama", "Parse AMA / PubMed MEDLINE / Vancouver references", value = TRUE),
+          checkboxInput("ref_src_google", "Parse Google Scholar normalized 4-line records", value = TRUE),
+          checkboxInput("ref_src_scopus", "Parse NCKU Pure / Scopus research output normalized records", value = TRUE),
+          textAreaInput(
+            "ama_refs_text",
+            "Paste normalized AMA/PubMed, Google Scholar, or NCKU Pure/Scopus records for journal/author extraction",
+            value = "",
+            rows = 8,
+            width = "100%",
+            placeholder = "Paste normalized records only. Supported: (1) AMA/Vancouver references; (2) PubMed MEDLINE/NBIB records; (3) Google Scholar 4-line rows: Title / Authors / Journal-source / Cited-by+Year; (4) NCKU Pure/Scopus rows: Title / Authors+Year+於:Journal / 研究成果 / citation count after each reference. Non-normalized page text is ignored. When checked, this textarea is used instead of uploaded TXT."
+          ),
+          actionButton("btn_clear_ama_refs_text", "Clear pasted-reference textarea", class = "btn-default", width = "100%"),
+          tags$div(class="small-note", "Clears only the pasted-reference textarea; uploaded TXT and PubMed query are unchanged."),
+          tags$div(style="margin-top:8px;"),
+          verbatimTextOutput("ama_processing_status"),
+          downloadButton("dl_ama_journal_csv", "Download journal CSV", width = "100%"),
+          downloadButton("dl_ama_journal_pie", "Download pie PNG", width = "100%"),
+          tags$div(class="small-note","After upload, the file is saved to ./uploaded_pubmed.txt automatically. Then click Run AMA journal extraction to analyze journals from this text file."),
           tags$hr()
       ),
       div(class="card",
           h4("1) PubMed query"),
           textAreaInput("term", "Search term", value = default_term, rows = 3, width = "100%"),
+          checkboxInput("batch_author_aac", "Series author AAC mode: treat each pasted name as an [Author] query", value = FALSE),
+          tags$div(class="small-note", "When checked, paste one author per line in the search box. If the AMA/PubMed textarea option above is checked, the app uses that textarea instead and can extract author names from full references. AAC is computed only when PubMed hits are fully fetched (pubmed_hits <= fetched_pmids)."),
+          downloadButton("dl_batch_author_aac", "Download series author AAC CSV", width = "100%"),
           tags$div(class="small-note",
                    "Common tags: ",
                    tags$span(class="mono","[Author]"), ", ",
@@ -1203,6 +1708,201 @@ div(style="border:1px solid #e6e6e6; border-radius:12px; padding:10px; backgroun
         ),
         
 
+
+        tabPanel("AMA Journals",
+                 h4("Top 20 journals from uploaded AMA/PubMed or Google Scholar text"),
+                 tags$div(class = "small-note",
+                          "Upload a PubMed MEDLINE/AMA .txt file in the sidebar, then click Run AMA journal extraction. ",
+                          "The parser uses MEDLINE JT/TA fields when available; otherwise it extracts the journal name from AMA-style references."),
+                 tags$hr(),
+                 h4("Summary"),
+                 verbatimTextOutput("ama_journal_summary"),
+                 tags$hr(),
+                 h4("Google Scholar / NCKU Scopus citation metrics"),
+                 tags$div(class = "small-note",
+                          "Shown when pasted Google Scholar or NCKU Pure/Scopus rows include article citation counts and publication years. ",
+                          "The Since column is computed from article publication year in the pasted rows."),
+                 DTOutput("tbl_ama_gs_metrics"),
+                 tags$hr(),
+                 h4("Year bar chart from normalized Google Scholar / NCKU Scopus references"),
+                 tags$div(class = "small-note",
+                          "This chart uses only normalized parsed reference rows with a valid publication year."),
+                 plotOutput("plt_ama_gs_year_bar", height = "420px"),
+                 DTOutput("tbl_ama_gs_year_bar"),
+                 tags$hr(),
+                 h4("All-reference h-index from parsed Google Scholar / NCKU Scopus rows"),
+                 tags$div(class = "small-note",
+                          "This table uses all parsed article/reference citation counts once, not only first/last authors."),
+                 DTOutput("tbl_ama_gs_all_reference_hindex"),
+                 tags$hr(),
+                 h4("Author h-index from Google Scholar / NCKU Scopus references"),
+                 tags$div(class = "small-note",
+                          "Two author-level h-index tables are reported separately: ",
+                          "(1) first/last authors only, and (2) all byline authors. ",
+                          "Both use the article citation counts parsed from the pasted Google Scholar rows."),
+                 fluidRow(
+                   column(6,
+                          h4("1st/last author-based h-index"),
+                          DTOutput("tbl_ama_gs_author_hindex_first_last")),
+                   column(6,
+                          h4("All-author based h-index"),
+                          DTOutput("tbl_ama_gs_author_hindex_all"))
+                 ),
+                 tags$hr(),
+                 h4("Top Journal Frequencies"),
+                 DTOutput("tbl_ama_top_journals"),
+                 tags$hr(),
+                 h4("Pie Plot"),
+                 plotOutput("plt_ama_journal_pie", height = "650px"),
+                 tags$hr(),
+                 tags$div(class = "small-note",
+                          "This tab is journal-only. For the mixed Journal + Author co-word network, SSplot, and cluster AAC, use the AMA Author/Journal tab."),
+                 tags$hr(),
+                 h4("Extracted journal by reference"),
+                 DTOutput("tbl_ama_journal_refs"),
+                 tags$hr(),
+                 h4("Article citations parsed from Google Scholar / NCKU Scopus"),
+                 DTOutput("tbl_ama_gs_articles")
+        ),
+
+        tabPanel("AMA Author/Journal",
+                 h4("Top 20 author/journal elements from uploaded AMA/PubMed or Google Scholar records"),
+                 tags$div(class = "small-note",
+                          "Upload a PubMed MEDLINE/AMA .txt file, then click Run AMA author/journal extraction. ",
+                          "The app extracts journals and authors, builds Journal + Author co-occurrence edges, applies Top20 selection, and draws the same Top20 using the FLCA-process plotting logic. Cluster AAC is shown once per cluster in the SSplot."),
+                 tags$hr(),
+                 verbatimTextOutput("ama_ref_status"),
+                 tags$hr(),
+                 h4("All-reference h-index"),
+                 tags$div(class = "small-note",
+                          "This reports profile-reported Google Scholar metrics when the copied profile summary is present, plus parsed normalized reference metrics once per article. It is independent of byline position."),
+                 DTOutput("tbl_ama_ref_all_reference_hindex"),
+                 tags$hr(),
+                 h4("Year bar chart from normalized Google Scholar / NCKU Scopus references"),
+                 tags$div(class = "small-note",
+                          "This chart uses only normalized parsed reference rows with a valid publication year."),
+                 plotOutput("plt_ama_ref_year_bar", height = "420px"),
+                 DTOutput("tbl_ama_ref_year_bar"),
+                 tags$hr(),
+                 h4("Reference-level author h-index"),
+                 tags$div(class = "small-note",
+                          "When Google Scholar or NCKU Pure/Scopus rows are pasted, this reports author-level h-index from the same article citation counts: first/last authors only vs all byline authors."),
+                 fluidRow(
+                   column(6,
+                          h4("1st/last author-based h-index"),
+                          DTOutput("tbl_ama_ref_author_hindex_first_last")),
+                   column(6,
+                          h4("All-author based h-index"),
+                          DTOutput("tbl_ama_ref_author_hindex_all"))
+                 ),
+                 tags$hr(),
+                 h4("Top 20 check list"),
+                 tags$div(class = "small-note", "This table is the FLCA-MA-SIL Top20 used by Network, SSplot, and Kano. Numeric values are displayed to 2 decimals."),
+                 verbatimTextOutput("tbl_ama_ref_top20_check"),
+                 tags$hr(),
+                 h4("Interactive network"),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_ref_network_png", "Download Network PNG"),
+                          downloadButton("dl_ama_ref_network_html", "Download Interactive Network HTML")),
+                 visNetworkOutput("vn_ama_ref", height = "760px"),
+                 tags$hr(),
+                 h4("Clustered network from FLCA-MA-SIL"),
+                 tags$div(class = "small-note",
+                          "This second network fixes node positions by FLCA cluster (carac), so the clusters used in SSplot can be checked directly in the network view."),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_ref_cluster_network_png", "Download Cluster Network PNG"),
+                          downloadButton("dl_ama_ref_cluster_network_html", "Download Cluster Network HTML")),
+                 visNetworkOutput("vn_ama_ref_cluster", height = "760px"),
+                 tags$hr(),
+                 h4("SSplot from FLCA process / renderSSplot.R"),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_ref_ss_png", "Download SSplot PNG")),
+                 plotOutput("plt_ama_ref_ss", height = "900px"),
+                 tags$hr(),
+                 h4("Kano plot from FLCA process / kano.R"),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_ref_kano_png", "Download Kano PNG")),
+                 plotOutput("plt_ama_ref_kano", height = "1250px"),
+                 tags$hr(),
+                 h4("Top 20 nodes"),
+                 verbatimTextOutput("tbl_ama_ref_nodes"),
+                 tags$hr(),
+                 h4("Edges"),
+                 verbatimTextOutput("tbl_ama_ref_edges"),
+                 tags$hr(),
+                 h4("Parsed Journal/Author table"),
+                 verbatimTextOutput("tbl_ama_ref_wide"),
+                 tags$hr(),
+                 downloadButton("dl_ama_ref_nodes", "Download AMA author/journal nodes CSV"),
+                 downloadButton("dl_ama_ref_edges", "Download AMA author/journal edges CSV"),
+                 downloadButton("dl_ama_ref_wide", "Download parsed journal/authors CSV")
+        ),
+
+        tabPanel("AMA Author AAC",
+                 h4("AMA Author AAC: 1st and last authors only"),
+                 tags$div(class = "small-note",
+                          "Click the red sidebar button: Run AMA author AAC (1st+Last only). ",
+                          "This tab excludes journal nodes and keeps only first/last author terms per article. ",
+                          "The same FLCA-MA-SIL Top20 logic is then used for network, clustered network, SSplot, Kano, and AAC."),
+                 tags$hr(),
+                 verbatimTextOutput("ama_author_aac_status"),
+                 tags$hr(),
+                 h4("Highlighted h-index and AAC"),
+                 tags$div(class = "small-note",
+                          "The upper rows summarize profile-reported, all-reference, and first/last author-based citation metrics. ",
+                          "AAC is computed from the Top20 first/last-author node values."),
+                 DTOutput("tbl_ama_author_aac_highlights"),
+                 tags$hr(),
+                 h4("All-reference Google Scholar / NCKU h-index"),
+                 tags$div(class = "small-note",
+                          "This additional table uses all parsed references and citation counts, including NCKU Pure/Scopus citation counts found after each reference; it is not limited to first/last-author rows."),
+                 DTOutput("tbl_ama_author_aac_all_reference_hindex"),
+                 tags$hr(),
+                 h4("1st/last author-based Google Scholar / NCKU h-index"),
+                 tags$div(class = "small-note",
+                          "This table uses the same parsed reference citation counts, but assigns each reference only to its first and last authors."),
+                 DTOutput("tbl_ama_author_aac_first_last_reference_hindex"),
+                 tags$hr(),
+                 h4("Top 20 first/last-author check list"),
+                 verbatimTextOutput("tbl_ama_author_aac_top20_check"),
+                 tags$hr(),
+                 h4("Interactive network"),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_author_aac_network_png", "Download Network PNG"),
+                          downloadButton("dl_ama_author_aac_network_html", "Download Interactive Network HTML")),
+                 visNetworkOutput("vn_ama_author_aac", height = "760px"),
+                 tags$hr(),
+                 h4("Clustered network from FLCA-MA-SIL"),
+                 tags$div(class = "small-note", "Node positions are fixed by carac; each follower has one edge to its own cluster leader."),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_author_aac_cluster_network_png", "Download Cluster Network PNG"),
+                          downloadButton("dl_ama_author_aac_cluster_network_html", "Download Cluster Network HTML")),
+                 visNetworkOutput("vn_ama_author_aac_cluster", height = "760px"),
+                 tags$hr(),
+                 h4("SSplot"),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_author_aac_ss_png", "Download SSplot PNG")),
+                 plotOutput("plt_ama_author_aac_ss", height = "900px"),
+                 tags$hr(),
+                 h4("Kano plot"),
+                 tags$div(style = "margin-bottom:8px;",
+                          downloadButton("dl_ama_author_aac_kano_png", "Download Kano PNG")),
+                 plotOutput("plt_ama_author_aac_kano", height = "1250px"),
+                 tags$hr(),
+                 h4("Top20 first/last-author nodes"),
+                 verbatimTextOutput("tbl_ama_author_aac_nodes"),
+                 tags$hr(),
+                 h4("First-last author edges"),
+                 verbatimTextOutput("tbl_ama_author_aac_edges"),
+                 tags$hr(),
+                 h4("Parsed first/last-author table"),
+                 verbatimTextOutput("tbl_ama_author_aac_wide"),
+                 tags$hr(),
+                 downloadButton("dl_ama_author_aac_nodes", "Download first/last-author nodes CSV"),
+                 downloadButton("dl_ama_author_aac_edges", "Download first/last-author edges CSV"),
+                 downloadButton("dl_ama_author_aac_wide", "Download parsed first/last-author CSV")
+        ),
+
   tabPanel("Author",
                  h4("Interactive network (Author, Top20)"),
                  visNetworkOutput("vn_author", height = "650px"),
@@ -1224,8 +1924,44 @@ div(style="border:1px solid #e6e6e6; border-radius:12px; padding:10px; backgroun
         )
 
         , tabPanel("Slope",
+
+      tags$hr(),
+      h4("Combo entity Top10 slope graph over years"),
+      tags$div(class = "small-note", "Top 10 selected entity elements by yearly counts."),
+      selectInput("slope_simple_entity_domain", "Entity/domain", 
+                  choices = c("Author","Journal","Country","State/Province","Institute","Department","MeSH"),
+                  selected = "Author"),
+      sliderInput("slope_simple_recent_years", "Recent years", min = 5, max = 20, value = 10, step = 1),
+      verbatimTextOutput("slope_combo_entity_note"),
+      plotOutput("slope_combo_entity_plot", height = "760px"),
+      DTOutput("slope_combo_entity_table"),
+
          h4("Top10 各名稱年度次數 / Slopegraph (10年門檻 + 前5/後5 t-test；single-term only)"),
          uiOutput("yearcount_ui"),
+         tags$hr(),
+         h4("Combo entity slopegraph from app(708).R style"),
+         tags$p(class = "small-note",
+                "Choose one entity domain. The graph shows a real Tufte-style slopegraph for the Top 10 elements of that entity over recent years."),
+         fluidRow(
+           column(4,
+                  selectInput("slope_combo_entity_domain",
+                              "Entity domain",
+                              choices = c("Author","Journal","Country","State/Province","Institute","Department","MeSH"),
+                              selected = "Author")
+           ),
+           column(4,
+                  sliderInput("slope_combo_recent_years",
+                              "Recent years",
+                              min = 5, max = 20, value = 10, step = 1)
+           ),
+           column(4,
+                  tags$div(class = "small-note", style = "margin-top:25px;",
+                           "This selector alone controls the real slopegraph; no Combo-tab sync is used.")
+           )
+         ),
+         plotOutput("plot_slope_combo_entity_top10", height = "760px"),
+         DT::DTOutput("tbl_slope_combo_entity_top10"),
+         tags$hr(),
          h4("Metadata combo slopegraph"),
          plotOutput("plt_slope_top2_country", height = "520px"),
          DT::DTOutput("tbl_yearcount_top20"),
@@ -1236,7 +1972,29 @@ div(style="border:1px solid #e6e6e6; border-radius:12px; padding:10px; backgroun
          tags$hr(),
          h4("MeSH metadata slopegraph"),
          plotOutput("plt_slope_top2_mesh", height = "520px"),
-         DT::DTOutput("tbl_yearcount_top20_mesh")
+         DT::DTOutput("tbl_yearcount_top20_mesh"),
+
+         tags$hr(),
+         h4("Year-count matrix inside Slope tab"),
+         tags$p(class = "small-note",
+                "Uses the same selected entity/domain and recent-year window as the Combo entity slopegraph above. Highlight point = Count greater than that element's own mean count."),
+         plotOutput("slope_burst_heatmap_plot", height = "650px"),
+
+         tags$hr(),
+         h4("Year-count spot plot inside Slope tab"),
+         tags$p(class = "small-note",
+                "Top10 long table is generated first, then plotted as a year-by-element spot timeline. Red spots indicate Count greater than the element mean."),
+         plotOutput("slope_burst_timeline_plot", height = "650px"),
+
+         tags$hr(),
+         h4("Strategic map inside Slope tab"),
+         tags$p(class = "small-note",
+                "Top10 elements from the same selected entity/domain. x=maturity(value), y=influence(value2), point size/label reflects recent trend from recent timepoints."),
+         plotly::plotlyOutput("slope_mesh_3d_plot", height = "720px"),
+
+         tags$hr(),
+         h4("Top10 long table used by Slope-tab extra plots"),
+         verbatimTextOutput("slope_burst_long_table")
 ),
         tabPanel("Term/Year",
                  h4("1st+Last Authors: Terms / Year counts (slopegraph)"),
@@ -1296,7 +2054,7 @@ div(style="border:1px solid #e6e6e6; border-radius:12px; padding:10px; backgroun
                    ),
                    column(4, tags$div(style="padding-top:28px;", "Kano: x=a*, y=SS; bubble size=value; color=cluster."))
                  ),
-                 plotOutput("ss_kano_plot", height = "700px")
+                 plotOutput("ss_kano_plot", height = "1050px")
         ),
 
         tabPanel("TAAA",
@@ -1316,6 +2074,46 @@ div(style="border:1px solid #e6e6e6; border-radius:12px; padding:10px; backgroun
           tags$hr(),
           h4("K x K table after Hungarian mapping"),
           tableOutput("taaa_confusion_table")
+        ),
+        tabPanel("TAAA2",
+          h4("TAAA2: semantic article clustering using PubMedBERT / SPECTER2"),
+          tags$p(class = "small-note",
+                 "TAAA2 extends the TAAA idea from rule-based article-theme mapping to embedding-based semantic clustering. Titles and abstracts are converted into PubMedBERT or SPECTER2 embeddings, clustered by cosine similarity, labeled by TF-IDF terms, and visualized as UMAP and semantic network plots."),
+          fluidRow(
+            column(4,
+                   selectInput(
+                     "taaa2_model",
+                     "Embedding model",
+                     choices = c(
+                       "PubMedBERT / BiomedBERT" = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
+                       "SPECTER2" = "allenai/specter2"
+                     ),
+                     selected = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
+                   )
+            ),
+            column(3,
+                   numericInput("taaa2_k", "Number of clusters", value = 3, min = 2, max = 8, step = 1)
+            ),
+            column(3,
+                   numericInput("taaa2_top_edges", "Top links per article", value = 2, min = 1, max = 5, step = 1)
+            ),
+            column(2,
+                   tags$div(style = "padding-top:25px;",
+                            actionButton("run_taaa2", "Run TAAA2", class = "btn-danger"))
+            )
+          ),
+          tags$hr(),
+          h4("TAAA2 UMAP semantic cluster map"),
+          plotOutput("taaa2_umap_plot", height = "560px"),
+          tags$hr(),
+          h4("TAAA2 semantic similarity network"),
+          plotOutput("taaa2_network_plot", height = "660px"),
+          tags$hr(),
+          h4("Article-level TAAA2 results"),
+          tableOutput("taaa2_article_table"),
+          tags$hr(),
+          h4("Cluster labels and element terms"),
+          tableOutput("taaa2_cluster_label_table")
         ),
         tabPanel("Lotka",
                  h4("Lotka's law for author publication distribution"),
@@ -1392,6 +2190,86 @@ div(style="border:1px solid #e6e6e6; border-radius:12px; padding:10px; backgroun
   tabPanel("AAC",
     aac_ui("aac")   # <<<<<< 這行就是插入點
   ),
+  tabPanel("BCa/EIS",
+    h4("BCa/EIS: Bootstrap BCa confidence interval for elbow identification"),
+    tags$p(class = "small-note",
+           "BCa/EIS scans ranked author publication counts using conditional follower bootstrap. For each candidate, the candidate value is fixed and only lower-ranked followers are resampled. AAC_OR = (candidate/follower1)/(follower1/follower2); BCa/EIS judges whether the BCa lower bound exceeds the AAC_OR cutoff."),
+    fluidRow(
+      column(3, numericInput("bca_R", "Bootstrap replications R", value = 500, min = 100, max = 5000, step = 100)),
+      column(3, numericInput("bca_cutoff", "AAC OR cutoff", value = 2.0, min = 1, max = 10, step = 0.1)),
+      column(3, numericInput("bca_conf", "Confidence level", value = 0.95, min = 0.80, max = 0.99, step = 0.01)),
+      column(3, selectInput("bca_top_k", "Dominance target", choices = c("Top 1" = 1, "Top 2" = 2, "Top 3" = 3), selected = 1))
+    ),
+    fluidRow(
+      column(4, tags$div(style = "padding-top:10px;", downloadButton("dl_bca_eis", "Download BCa/EIS CSV", width = "100%"))),
+      column(4, tags$div(style = "padding-top:10px;", downloadButton("dl_bca_topk_png", "Download Top-k PNG", width = "100%"))),
+      column(4, tags$div(style = "padding-top:10px;", downloadButton("dl_bca_topk_figure_zip", "Download PNG + Caption ZIP", width = "100%")))
+    ),
+    tags$hr(),
+    h4("Editable values for BCa/EIS demonstration or re-analysis"),
+    tags$p(class = "small-note",
+           "Paste any entity counts or scores below (Author, Country, Institute, Journal, MeSH, Department, etc.). Values can be separated by new lines, commas, spaces, or semicolons. They are auto-sorted decreasingly before BCa/EIS; no manual sorting is required."),
+    textAreaInput(
+      "bca_values_text",
+      "Editable values",
+      value = "1000
+100
+50
+49
+48
+47
+46
+45
+44
+43
+42
+41
+40
+39
+38
+37
+36
+35
+34
+33
+32
+31
+30
+29
+28
+27
+26
+25
+24
+23",
+      rows = 7,
+      width = "100%"
+    ),
+    actionButton("bca_recompute_manual", "Recompute BCa/EIS from editable values", class = "btn-warning"),
+    br(), br(),
+    verbatimTextOutput("txt_bca_run_status"),
+    tags$div(class = "bca-progress-note small-note",
+             "After pressing Recompute, please wait until the progress bar finishes. Large R or many values can be slow because BCa is re-estimated at every internal point."),
+    tags$p(class = "small-note",
+           "Note: BCa/EIS now uses conditional follower bootstrap: each candidate value is fixed, and only its lower-ranked followers are resampled. Rows with fewer than 3 followers are marked with the reason and are not assigned BCa/EIS."),
+    tags$hr(),
+    h4("Automatic elbow decision and EIS"),
+    verbatimTextOutput("txt_bca_eis_decision"),
+    DT::DTOutput("tbl_bca_eis_summary"),
+    tags$p(class = "small-note",
+           "EIS is defined as BCa_lower / AAC_OR cutoff for the automatically selected elbow. EIS > 1 means the BCa lower bound exceeds the AAC_OR cutoff and the elbow is statistically supported."),
+    tags$hr(),
+    plotOutput("plt_bca_eis", height = "560px"),
+    tags$hr(),
+    DT::DTOutput("tbl_bca_eis"),
+    tags$hr(),
+    h4("Top-k dominance vs rest"),
+    tags$p(class = "small-note",
+           "Choose Top 1, Top 2, or Top 3 above. The selected candidate rank is fixed, and only its lower-ranked followers are resampled. This allows AAC/BCa/EIS testing for different entity elements, not only authors."),
+    verbatimTextOutput("txt_top1_bca_eis"),
+    plotOutput("plt_top1_dominance", height = "620px"),
+    DT::DTOutput("tbl_top1_bca_eis")
+  ),
 tabPanel("Download List",
                  h4("Download nodes & edges"),
                  downloadButton("dl_nodes_edges_zip", "Download ZIP (nodes.csv + edges.csv)"),
@@ -1446,6 +2324,9 @@ tabPanel("Report",
                  uiOutput("ui_icite_link"),
                  tags$hr(),
                  h5("PMIDs used"),
+                 downloadButton("dl_pmids_txt", "Download PMID list (.txt)"),
+                 downloadButton("dl_pmids_csv", "Download PMID list (.csv)"),
+                 tags$p(class="small-note", "PMIDs are taken directly from the latest PubMed query result or uploaded MEDLINE file used in this run."),
                  DTOutput("tbl_pmids")
         ),
 
@@ -1474,10 +2355,10 @@ tabPanel("Report",
                  tags$p(class="small-note",
                         "Kano plots are drawn from the selected domain's Top-20 nodes after FLCA+MajorSampling, using value/value2/SS/a* for that domain."),
                  h5("Kano: value vs value2"),
-                 plotOutput("kano_vv2_plot", height = "650px"),
+                 plotOutput("kano_vv2_plot", height = "1050px"),
                  tags$hr(),
                  h5("Kano: SS vs a*"),
-                 plotOutput("kano_ss_astar_plot", height = "650px")
+                 plotOutput("kano_ss_astar_plot", height = "1050px")
         ),
 
         tabPanel("Country",
@@ -1944,75 +2825,327 @@ test_lotka <- function(df,
 }
 
 .augment_author_nodes <- function(nodes, edges){
-  if (is.null(nodes) || !is.data.frame(nodes) || nrow(nodes)==0) return(nodes)
-  if (is.null(edges) || !is.data.frame(edges) || nrow(edges)==0) {
-    # still ensure n_byline exists if possible
-    if (!("n_byline" %in% names(nodes)) && all(c("n_pubmed","single_author") %in% names(nodes))){
-      nodes$n_byline <- pmax(0, as.numeric(nodes$n_pubmed) - as.numeric(nodes$single_author))
+  # Safe Author-node augmentation.
+  # This function must never stop the Shiny run. In some Top20 fallbacks,
+  # the edge table can have zero valid Leader/Follower matches; merge/aggregate
+  # then creates no FA/LA column and `$<-` may crash with:
+  # "replacement has 0 rows, data has 20". Use explicit vectors instead.
+  tryCatch({
+    if (is.null(nodes) || !is.data.frame(nodes) || nrow(nodes) == 0) return(nodes)
+    nd <- nodes
+
+    if (!("name" %in% names(nd))) {
+      if ("label" %in% names(nd)) nd$name <- as.character(nd$label)
+      else if ("id" %in% names(nd)) nd$name <- as.character(nd$id)
+      else nd$name <- as.character(seq_len(nrow(nd)))
     }
-    return(nodes)
+    nd$name <- trimws(as.character(nd$name))
+
+    # defaults that are safe for zero-edge / fallback Top20 cases.
+    # If full FA/LA metrics were already merged into the nodes, preserve them;
+    # do not overwrite them using the reduced Top20 one-link display edges.
+    .has_existing_fala <- all(c("FA", "LA") %in% names(nd)) &&
+      any(is.finite(suppressWarnings(as.numeric(nd$FA)) + suppressWarnings(as.numeric(nd$LA))) &
+            (suppressWarnings(as.numeric(nd$FA)) + suppressWarnings(as.numeric(nd$LA))) > 0)
+    if (!("FA" %in% names(nd))) nd$FA <- 0
+    if (!("LA" %in% names(nd))) nd$LA <- 0
+    if (!("single_author" %in% names(nd))) {
+      if (all(c("value", "value2") %in% names(nd))) {
+        nd$single_author <- pmax(0, suppressWarnings(as.numeric(nd$value) - as.numeric(nd$value2)))
+      } else {
+        nd$single_author <- 0
+      }
+    }
+    nd$single_author <- suppressWarnings(as.numeric(nd$single_author))
+    nd$single_author[!is.finite(nd$single_author)] <- 0
+    if (!("n_pubmed" %in% names(nd))) nd$n_pubmed <- NA_real_
+
+    # Normalize edge schema only if usable.
+    ed <- edges
+    if (!.has_existing_fala && !is.null(ed) && is.data.frame(ed) && nrow(ed) > 0) {
+      if (!("Leader" %in% names(ed)) && "leader" %in% names(ed)) ed$Leader <- ed$leader
+      if (!("Follower" %in% names(ed)) && "follower" %in% names(ed)) ed$Follower <- ed$follower
+      if (!("Leader" %in% names(ed)) && "from" %in% names(ed)) ed$Leader <- ed$from
+      if (!("Follower" %in% names(ed)) && "to" %in% names(ed)) ed$Follower <- ed$to
+      wcol <- if ("WCD" %in% names(ed)) "WCD" else if ("wcd" %in% names(ed)) "wcd" else if ("weight" %in% names(ed)) "weight" else NULL
+      if (is.null(wcol)) { ed$WCD <- 1; wcol <- "WCD" }
+
+      if (all(c("Leader", "Follower") %in% names(ed))) {
+        ed$Leader <- trimws(as.character(ed$Leader))
+        ed$Follower <- trimws(as.character(ed$Follower))
+        ed[[wcol]] <- suppressWarnings(as.numeric(ed[[wcol]]))
+        ed <- ed[nzchar(ed$Leader) & nzchar(ed$Follower) & is.finite(ed[[wcol]]) & ed[[wcol]] > 0, , drop = FALSE]
+
+        if (nrow(ed) > 0) {
+          fa <- tapply(ed[[wcol]], ed$Leader, sum, na.rm = TRUE)
+          la <- tapply(ed[[wcol]], ed$Follower, sum, na.rm = TRUE)
+          fa_v <- suppressWarnings(as.numeric(fa[match(nd$name, names(fa))]))
+          la_v <- suppressWarnings(as.numeric(la[match(nd$name, names(la))]))
+          fa_v[!is.finite(fa_v)] <- 0
+          la_v[!is.finite(la_v)] <- 0
+          nd$FA <- fa_v
+          nd$LA <- la_v
+        }
+      }
+    }
+
+    # value2 = first + last author edge strength; single-author self loop excluded.
+    nd$value2 <- suppressWarnings(as.numeric(nd$FA)) + suppressWarnings(as.numeric(nd$LA))
+    nd$value2[!is.finite(nd$value2)] <- 0
+
+    # value = first/last author appearance including single-author papers once.
+    nd$value <- nd$value2 + suppressWarnings(as.numeric(nd$single_author))
+    nd$value[!is.finite(nd$value)] <- 0
+
+    if (!("n_byline" %in% names(nd))) {
+      nd$n_byline <- nd$n_pubmed
+    } else {
+      nd$n_byline <- ifelse(is.na(nd$n_byline) & !is.na(nd$n_pubmed), nd$n_pubmed, nd$n_byline)
+    }
+    if (!("n_byline_non_single" %in% names(nd))) {
+      nd$n_byline_non_single <- ifelse(is.na(nd$n_pubmed), NA_real_, pmax(0, suppressWarnings(as.numeric(nd$n_pubmed)) - suppressWarnings(as.numeric(nd$single_author))))
+    }
+
+    nd$value2_strength <- .AAC_INLINE(nd$value2)
+    nd
+  }, error = function(e) {
+    warning("[AUTHOR] .augment_author_nodes skipped safely: ", conditionMessage(e), call. = FALSE)
+    nodes
+  })
+}
+
+
+# ---- AUTHOR edge guard: exactly one leader edge per follower ----
+# Input edges must come from first-author/last-author pairs only.
+# This guard re-orients candidate pairs by node value (higher value = leader),
+# aggregates duplicate leader-follower pairs, and retains only the strongest
+# single incoming edge for every follower. It is used after FLCA-MA-SIL and
+# also for deterministic fallback, so Sankey/network displays remain one-link.
+.author_enforce_single_edge_per_follower <- function(nodes, edges) {
+  if (is.null(edges) || !is.data.frame(edges) || nrow(edges) == 0) {
+    return(data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors=FALSE))
   }
+  ed <- as.data.frame(edges, stringsAsFactors = FALSE)
+  if (!"Leader" %in% names(ed) && "leader" %in% names(ed)) ed$Leader <- ed$leader
+  if (!"Follower" %in% names(ed) && "follower" %in% names(ed)) ed$Follower <- ed$follower
+  if (!"Leader" %in% names(ed) && "Source" %in% names(ed)) ed$Leader <- ed$Source
+  if (!"Follower" %in% names(ed) && "Target" %in% names(ed)) ed$Follower <- ed$Target
+  if (!"Leader" %in% names(ed) && "from" %in% names(ed)) ed$Leader <- ed$from
+  if (!"Follower" %in% names(ed) && "to" %in% names(ed)) ed$Follower <- ed$to
+  if (!"WCD" %in% names(ed)) {
+    if ("wcd" %in% names(ed)) ed$WCD <- ed$wcd
+    else if ("weight" %in% names(ed)) ed$WCD <- ed$weight
+    else if ("value" %in% names(ed)) ed$WCD <- ed$value
+    else ed$WCD <- 1
+  }
+  if (!all(c("Leader","Follower","WCD") %in% names(ed))) {
+    return(data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors=FALSE))
+  }
+  ed$Leader <- trimws(as.character(ed$Leader))
+  ed$Follower <- trimws(as.character(ed$Follower))
+  ed$WCD <- suppressWarnings(as.numeric(ed$WCD))
+  ed <- ed[nzchar(ed$Leader) & nzchar(ed$Follower) & ed$Leader != ed$Follower & is.finite(ed$WCD) & ed$WCD > 0,
+           c("Leader","Follower","WCD"), drop=FALSE]
+  if (!nrow(ed)) return(data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors=FALSE))
+
+  # Keep only displayed/selected nodes when supplied.
   nd <- nodes
-  if (!("name" %in% names(nd))) {
+  if (!is.null(nd) && is.data.frame(nd) && nrow(nd) > 0) {
+    if (!"name" %in% names(nd)) {
+      if ("label" %in% names(nd)) nd$name <- nd$label
+      else if ("id" %in% names(nd)) nd$name <- nd$id
+      else nd$name <- as.character(seq_len(nrow(nd)))
+    }
+    nd$name <- trimws(as.character(nd$name))
+    nd <- nd[!is.na(nd$name) & nzchar(nd$name), , drop=FALSE]
+    nd <- nd[!duplicated(nd$name), , drop=FALSE]
+    keep <- nd$name
+    ed <- ed[ed$Leader %in% keep & ed$Follower %in% keep, , drop=FALSE]
+    if (!nrow(ed)) return(data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors=FALSE))
+
+    # FLCA leader direction: higher node value becomes Leader; ties are stable by name.
+    val_col <- if ("value" %in% names(nd)) "value" else if ("value2" %in% names(nd)) "value2" else NULL
+    if (!is.null(val_col)) {
+      vv <- suppressWarnings(as.numeric(nd[[val_col]])); vv[!is.finite(vv)] <- 0
+      names(vv) <- nd$name
+      vL <- vv[ed$Leader]; vF <- vv[ed$Follower]
+      vL[!is.finite(vL)] <- 0; vF[!is.finite(vF)] <- 0
+      swap <- (vF > vL) | (vF == vL & ed$Follower < ed$Leader)
+      if (any(swap, na.rm=TRUE)) {
+        tmp <- ed$Leader[swap]
+        ed$Leader[swap] <- ed$Follower[swap]
+        ed$Follower[swap] <- tmp
+      }
+      ed$.leader_value <- vv[ed$Leader]
+      ed$.leader_value[!is.finite(ed$.leader_value)] <- 0
+    } else {
+      ed$.leader_value <- 0
+    }
+  } else {
+    ed$.leader_value <- 0
+  }
+
+  # Aggregate duplicate Leader-Follower pairs first.
+  agg <- stats::aggregate(WCD ~ Leader + Follower, data = ed, FUN = function(x) sum(x, na.rm=TRUE))
+  lv <- stats::aggregate(.leader_value ~ Leader + Follower, data = ed, FUN = function(x) max(x, na.rm=TRUE))
+  agg <- merge(agg, lv, by=c("Leader","Follower"), all.x=TRUE)
+  agg$.leader_value[!is.finite(agg$.leader_value)] <- 0
+
+  # Exactly one incoming edge per follower: strongest WCD, then stronger leader, then name.
+  agg <- agg[order(agg$Follower, -agg$WCD, -agg$.leader_value, agg$Leader), , drop=FALSE]
+  out <- agg[!duplicated(agg$Follower), c("Leader","Follower","WCD"), drop=FALSE]
+  out <- out[order(-out$WCD, out$Leader, out$Follower), , drop=FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+
+# ---- AUTHOR Top20 guard: force at least two clusters for SS calculation ----
+# Rationale: a network may visibly have separate components, but silhouette needs
+# at least two *cluster labels* in nodes$carac. FLCA/MA can still return one
+# dominant cluster when the Top20 authors are all linked to one leader. This
+# guard preserves the FLCA Top20 nodes/edges, but if only one cluster label is
+# present it derives a second label from Top20 graph components first, then from
+# the two strongest leader seeds as a deterministic fallback.
+.force_author_min2_clusters_and_ss <- function(nodes20, edges20, data_edges = NULL, cfg = list()) {
+  if (is.null(nodes20) || !is.data.frame(nodes20) || nrow(nodes20) == 0) {
+    return(list(nodes = nodes20, edges = edges20, changed = FALSE, reason = "no nodes"))
+  }
+
+  nd <- nodes20
+  if (!"name" %in% names(nd)) {
     if ("label" %in% names(nd)) nd$name <- as.character(nd$label)
     else if ("id" %in% names(nd)) nd$name <- as.character(nd$id)
+    else nd$name <- as.character(seq_len(nrow(nd)))
   }
-  nd$name <- as.character(nd$name)
+  nd$name <- trimws(as.character(nd$name))
+  nd <- nd[!is.na(nd$name) & nzchar(nd$name), , drop = FALSE]
+  nd <- nd[!duplicated(nd$name), , drop = FALSE]
+  if (!nrow(nd)) return(list(nodes = nd, edges = edges20, changed = FALSE, reason = "empty names"))
 
-  ed <- edges
-  if (!("Leader" %in% names(ed)) && "leader" %in% names(ed)) ed$Leader <- ed$leader
-  if (!("Follower" %in% names(ed)) && "follower" %in% names(ed)) ed$Follower <- ed$follower
-  wcol <- if ("WCD" %in% names(ed)) "WCD" else if ("wcd" %in% names(ed)) "wcd" else NULL
-  if (is.null(wcol)) { ed$WCD <- 1; wcol <- "WCD" }
-  ed$Leader <- as.character(ed$Leader)
-  ed$Follower <- as.character(ed$Follower)
-  ed[[wcol]] <- suppressWarnings(as.numeric(ed[[wcol]]))
-  ed[[wcol]][is.na(ed[[wcol]])] <- 0
-
-  fa <- aggregate(ed[[wcol]], by=list(name=ed$Leader), FUN=sum, na.rm=TRUE)
-  la <- aggregate(ed[[wcol]], by=list(name=ed$Follower), FUN=sum, na.rm=TRUE)
-  names(fa)[2] <- "FA"
-  names(la)[2] <- "LA"
-  nd <- merge(nd, fa, by="name", all.x=TRUE)
-  nd <- merge(nd, la, by="name", all.x=TRUE)
-  nd$FA[is.na(nd$FA)] <- 0
-  nd$LA[is.na(nd$LA)] <- 0
-
-  # Ensure single_author (self coword) exists; if absent, derive from value - value2 when possible
-  if (!("single_author" %in% names(nd))) {
-    if (all(c("value","value2") %in% names(nd))) nd$single_author <- pmax(0, suppressWarnings(as.numeric(nd$value) - as.numeric(nd$value2)))
-    else nd$single_author <- 0
+  ed <- edges20
+  if (is.null(ed) || !is.data.frame(ed)) {
+    ed <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
   }
-  nd$single_author[is.na(nd$single_author)] <- 0
-
-  # value2 = first+last appearances (exclude single-author self-loops)
-  nd$value2 <- as.numeric(nd$FA) + as.numeric(nd$LA)
-
-  # value = first+last appearances (include single-author papers)
-  # Single-author paper counts as BOTH first and last -> +2
-  nd$value  <- nd$value2 + 2 * as.numeric(nd$single_author)
-
-  # n_pubmed = byline appearances across all authors (any position).
-  # If it's not already present (or is NA), keep as NA; we will try to merge it in earlier from rv$author_lists_all.
-  if (!("n_pubmed" %in% names(nd))) nd$n_pubmed <- NA_real_
-
-  # n_byline = byline appearances (including single-author papers)
-  if (!("n_byline" %in% names(nd))) {
-    nd$n_byline <- nd$n_pubmed
+  if (nrow(ed)) {
+    if (!"Leader" %in% names(ed) && "leader" %in% names(ed)) ed$Leader <- ed$leader
+    if (!"Follower" %in% names(ed) && "follower" %in% names(ed)) ed$Follower <- ed$follower
+    if (!"WCD" %in% names(ed)) {
+      if ("wcd" %in% names(ed)) ed$WCD <- ed$wcd
+      else if ("weight" %in% names(ed)) ed$WCD <- ed$weight
+      else if ("value" %in% names(ed)) ed$WCD <- ed$value
+      else ed$WCD <- 1
+    }
+    ed$Leader <- trimws(as.character(ed$Leader))
+    ed$Follower <- trimws(as.character(ed$Follower))
+    ed$WCD <- suppressWarnings(as.numeric(ed$WCD))
+    ed$WCD[!is.finite(ed$WCD) | is.na(ed$WCD)] <- 1
+    keep_names <- nd$name
+    ed <- ed[ed$Leader %in% keep_names & ed$Follower %in% keep_names & nzchar(ed$Leader) & nzchar(ed$Follower), c("Leader","Follower","WCD"), drop = FALSE]
   } else {
-    nd$n_byline <- ifelse(is.na(nd$n_byline) & !is.na(nd$n_pubmed), nd$n_pubmed, nd$n_byline)
+    ed <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
   }
 
-  # optional: byline appearances excluding single-author papers
-  if (!("n_byline_non_single" %in% names(nd))) {
-    nd$n_byline_non_single <- ifelse(is.na(nd$n_pubmed), NA_real_, pmax(0, as.numeric(nd$n_pubmed) - as.numeric(nd$single_author)))
+  if (!"carac" %in% names(nd)) nd$carac <- 1L
+  nd$carac <- as.character(nd$carac)
+  nd$carac[is.na(nd$carac) | !nzchar(nd$carac)] <- "1"
+  k0 <- length(unique(nd$carac))
+  changed <- FALSE
+  reason <- "FLCA labels already had >=2 clusters"
+
+  if (nrow(nd) >= 2 && k0 < 2) {
+    # 1) Prefer true graph components of the displayed Top20 network.
+    comp_lab <- rep(NA_integer_, nrow(nd))
+    if (nrow(ed) > 0 && requireNamespace("igraph", quietly = TRUE)) {
+      gg <- tryCatch({
+        igraph::graph_from_data_frame(ed[, c("Leader", "Follower"), drop = FALSE], directed = FALSE,
+                                      vertices = data.frame(name = nd$name, stringsAsFactors = FALSE))
+      }, error = function(e) NULL)
+      if (!is.null(gg)) {
+        cc <- igraph::components(gg)$membership
+        comp_lab <- as.integer(cc[match(nd$name, names(cc))])
+      }
+    }
+    if (length(unique(comp_lab[is.finite(comp_lab)])) >= 2) {
+      nd$carac <- as.integer(factor(comp_lab, levels = sort(unique(comp_lab))))
+      changed <- TRUE
+      reason <- "derived from Top20 graph components"
+    } else {
+      # 2) If the Top20 graph is one connected component, split by two strongest seeds.
+      if (!"value" %in% names(nd)) nd$value <- 1
+      if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+      val <- suppressWarnings(as.numeric(nd$value)); val[!is.finite(val)] <- 0
+      val2 <- suppressWarnings(as.numeric(nd$value2)); val2[!is.finite(val2)] <- 0
+      ord <- order(-val, -val2, nd$name)
+      leaders <- nd$name[ord[seq_len(min(2L, length(ord)))]]
+      nd$carac <- NA_integer_
+      nd$carac[match(leaders, nd$name)] <- seq_along(leaders)
+
+      # use all author edges for seed assignment when available, then displayed Top20 edges
+      ed_assign <- data_edges
+      if (is.null(ed_assign) || !is.data.frame(ed_assign) || !nrow(ed_assign)) ed_assign <- ed
+      if (is.data.frame(ed_assign) && nrow(ed_assign)) {
+        if (!"Leader" %in% names(ed_assign) && "leader" %in% names(ed_assign)) ed_assign$Leader <- ed_assign$leader
+        if (!"Follower" %in% names(ed_assign) && "follower" %in% names(ed_assign)) ed_assign$Follower <- ed_assign$follower
+        if (!"WCD" %in% names(ed_assign)) {
+          if ("wcd" %in% names(ed_assign)) ed_assign$WCD <- ed_assign$wcd else ed_assign$WCD <- 1
+        }
+        ed_assign$Leader <- trimws(as.character(ed_assign$Leader))
+        ed_assign$Follower <- trimws(as.character(ed_assign$Follower))
+        ed_assign$WCD <- suppressWarnings(as.numeric(ed_assign$WCD))
+        ed_assign$WCD[!is.finite(ed_assign$WCD) | is.na(ed_assign$WCD)] <- 1
+      } else {
+        ed_assign <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
+      }
+
+      for (ii in which(is.na(nd$carac))) {
+        nm <- nd$name[ii]
+        hit <- ed_assign[(ed_assign$Leader == nm & ed_assign$Follower %in% leaders) |
+                           (ed_assign$Follower == nm & ed_assign$Leader %in% leaders), , drop = FALSE]
+        if (nrow(hit) > 0) {
+          hit$seed <- ifelse(hit$Leader %in% leaders, hit$Leader, hit$Follower)
+          hit <- hit[order(-hit$WCD), , drop = FALSE]
+          nd$carac[ii] <- match(hit$seed[1], leaders)
+        }
+      }
+      # any node not linked to a seed is alternated to keep >=2 labels without randomness
+      miss <- which(is.na(nd$carac))
+      if (length(miss)) nd$carac[miss] <- ((seq_along(miss) - 1L) %% max(1L, length(leaders))) + 1L
+      if (length(unique(nd$carac)) < 2 && nrow(nd) >= 2) nd$carac[seq(2, nrow(nd), by = 2)] <- 2L
+      changed <- TRUE
+      reason <- "derived from two strongest author seeds"
+    }
   }
 
-  # AAC over top-3 FA values (domain-level, attached to all nodes for hover convenience)
-  aac <- (.AAC_INLINE(nd$value2))
-  nd$value2_strength <- aac
+  nd$carac <- as.integer(factor(as.character(nd$carac), levels = unique(as.character(nd$carac))))
 
-  nd
+  # Recompute silhouette/a* after the cluster-label repair.
+  for (cc in c("ssi", "a_i", "b_i", "a_star1")) if (!cc %in% names(nd)) nd[[cc]] <- 0
+  if (nrow(ed) > 0 && length(unique(nd$carac)) >= 2 && exists("compute_silhouette_df", mode = "function")) {
+    sil <- tryCatch({
+      ed2 <- ed
+      if (!"follower" %in% names(ed2)) ed2$follower <- ed2$Follower
+      compute_silhouette_df(nd, ed2,
+                            intra_delta = cfg$intra_delta %||% 2,
+                            inter_delta = cfg$inter_delta %||% 5,
+                            eps = cfg$eps %||% 1e-9)
+    }, error = function(e) {
+      message("[AUTHOR min2 cluster] silhouette recompute failed: ", conditionMessage(e))
+      NULL
+    })
+    if (is.data.frame(sil) && nrow(sil) && "name" %in% names(sil)) {
+      drop_cols <- intersect(c("ssi", "a_i", "b_i", "a_star1", "SSi", "a_star"), names(nd))
+      nd[drop_cols] <- NULL
+      nd <- merge(nd, sil, by = "name", all.x = TRUE, sort = FALSE)
+      for (cc in c("ssi", "a_i", "b_i", "a_star1")) {
+        if (!cc %in% names(nd)) nd[[cc]] <- 0
+        nd[[cc]][!is.finite(suppressWarnings(as.numeric(nd[[cc]]))) | is.na(nd[[cc]])] <- 0
+      }
+      nd$SSi <- nd$ssi
+      nd$a_star <- nd$a_star1
+    }
+  }
+  list(nodes = nd, edges = ed, changed = changed, reason = reason)
 }
 
 bypass_record <- FALSE
@@ -2168,10 +3301,4470 @@ bypass_record <- FALSE
   list(row_table = row_df, freq_table = freq_df, profile_map_table = agree$mapping_table %||% NULL, kappa_table = agree$kappa_table %||% NULL, confusion_table = agree$confusion_table %||% NULL)
 }
 
+
+
+# ============================================================
+# AMA/PubMed reference-list journal extractor (Top 20 + pie)
+# Added for uploaded PubMed/AMA .txt files
+# ============================================================
+.read_text_any_encoding <- function(path){
+  if (is.null(path) || !nzchar(path) || !file.exists(path)) return("")
+  encs <- c("UTF-8", "UTF-8-BOM", "CP950", "Big5", "latin1")
+  for (enc in encs) {
+    txt <- tryCatch(readr::read_file(path, locale = readr::locale(encoding = enc)),
+                    error = function(e) NULL)
+    if (!is.null(txt) && nchar(txt) > 0) return(enc2utf8(txt))
+  }
+  paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+}
+
+.split_ama_refs <- function(txt){
+  txt <- paste(txt, collapse = "\n")
+  txt <- gsub("\r\n|\r", "\n", txt)
+  txt <- trimws(txt)
+  if (!nzchar(txt)) return(character(0))
+
+  # Numbered AMA/PubMed summary style: 1: ... or 1. ...
+  refs <- unlist(strsplit(txt, "\n(?=\\s*\\d+\\s*[:\\.])", perl = TRUE))
+  refs <- trimws(gsub("\\s+", " ", refs))
+  refs <- refs[nzchar(refs)]
+
+  # Fallback: blank-line records, useful for PubMed "Summary/Text" exports
+  if (length(refs) <= 1) {
+    refs2 <- unlist(strsplit(txt, "\n\\s*\n+", perl = TRUE))
+    refs2 <- trimws(gsub("\\s+", " ", refs2))
+    refs2 <- refs2[nzchar(refs2)]
+    if (length(refs2) > length(refs)) refs <- refs2
+  }
+  refs
+}
+
+
+.clean_journal_candidate <- function(x){
+  x <- trimws(as.character(x))
+  x <- gsub("\\s+", " ", x)
+  x <- gsub("^[[:punct:] ]+|[[:punct:] ]+$", "", x)
+  x <- trimws(x)
+
+  bad <- is.na(x) | x == "" |
+    grepl("^\\d{4}$", x) |
+    grepl("^\\d{4}[;:. ]", x) |
+    grepl("^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\b", x, ignore.case = TRUE) |
+    grepl("^(doi|pmid|pmcid|abstract|free article)\\b", x, ignore.case = TRUE) |
+    grepl("\\b(accessed|retrieved|available from|available at)\\b", x, ignore.case = TRUE, perl = TRUE) |
+    grepl("(取自|檢索|检索|瀏覽|浏览|取得|查詢)", x, ignore.case = TRUE, perl = TRUE) |
+    grepl("https?://|www[.]", x, ignore.case = TRUE, perl = TRUE) |
+    grepl("^[0-9]+$", x) |
+    nchar(x) < 3
+  x[bad] <- NA_character_
+  x
+}
+
+.extract_medline_field <- function(txt, tag){
+  txt <- paste(txt, collapse = "\n")
+  txt <- gsub("\r\n|\r", "\n", txt)
+  # MEDLINE continuation lines begin with six spaces; join them to the field.
+  pat <- paste0("(?ms)^", tag, "\\s*-\\s*(.*?)(?=\\n[A-Z0-9]{2,4}\\s*-|\\nPMID-\\s*|\\z)")
+  m <- gregexpr(pat, txt, perl = TRUE)
+  z <- regmatches(txt, m)[[1]]
+  if (!length(z)) return(character(0))
+  z <- sub(paste0("(?s)^", tag, "\\s*-\\s*"), "", z, perl = TRUE)
+  z <- gsub("\n\\s+", " ", z, perl = TRUE)
+  z <- trimws(gsub("\\s+", " ", z))
+  z[nzchar(z)]
+}
+
+.extract_journals_from_medline_txt <- function(txt){
+  # Correct source for PubMed MEDLINE exports:
+  # JT = full journal title; TA = ISO/abbreviated journal title; SO = source fallback.
+  jt <- .extract_medline_field(txt, "JT")
+  ta <- .extract_medline_field(txt, "TA")
+  so <- .extract_medline_field(txt, "SO")
+
+  n <- max(length(jt), length(ta), length(so), 0)
+  if (n == 0) return(data.frame())
+
+  pad <- function(x, n) c(x, rep("", max(0, n - length(x))))[seq_len(n)]
+  jt <- pad(jt, n); ta <- pad(ta, n); so <- pad(so, n)
+
+  journal <- ifelse(nzchar(jt), jt, ifelse(nzchar(ta), ta, ""))
+  # SO usually starts like: Journal title. 2024 Jan;...
+  so_j <- sub("\\.\\s*\\d{4}.*$", "", so)
+  journal <- ifelse(!nzchar(journal) & nzchar(so_j), so_j, journal)
+  journal <- .clean_journal_candidate(journal)
+
+  out <- data.frame(
+    reference_no = seq_len(n),
+    reference = so,
+    journal = journal,
+    stringsAsFactors = FALSE
+  )
+  out[!is.na(out$journal) & out$journal != "", , drop = FALSE]
+}
+
+.extract_journal_from_pubmed_summary_ref <- function(ref){
+  ref0 <- gsub("\r\n|\r", "\n", ref)
+  lines <- trimws(unlist(strsplit(ref0, "\n+", perl = TRUE)))
+  lines <- lines[nzchar(lines)]
+  lines <- gsub("^\\s*\\d+\\s*[:.]\\s*", "", lines)
+
+  # PubMed Summary/Text export often has a line like:
+  # Medicine (Baltimore). 2022 Jan 14;101(2):e285xx.
+  cand <- character(0)
+  for (ln in lines) {
+    z <- stringr::str_match(ln, "^(.+?)\\.\\s*(?:Epub\\s+)?\\d{4}(?:\\s|;|:|\\.|$)")[, 2]
+    if (!is.na(z) && nzchar(z)) cand <- c(cand, z)
+  }
+  cand <- .clean_journal_candidate(cand)
+  cand <- cand[!is.na(cand)]
+  if (length(cand)) return(cand[1])
+
+  # Single-line AMA reference: Authors. Title. Journal. 2026;...
+  one <- trimws(gsub("\\s+", " ", ref0))
+  one <- sub("^\\s*\\d+\\s*[:.]\\s*", "", one)
+  parts <- trimws(unlist(strsplit(one, "\\.\\s+", perl = TRUE)))
+  parts <- parts[nzchar(parts)]
+  yr_pos <- which(grepl("^\\d{4}(\\s|;|:|\\.|$)", parts))
+  if (length(yr_pos) > 0 && yr_pos[1] > 1) {
+    j <- .clean_journal_candidate(parts[yr_pos[1] - 1])
+    if (!is.na(j) && nzchar(j)) return(j)
+  }
+
+  # Last fallback for compact AMA: . Journal. 2026;
+  j <- stringr::str_match(one, "\\.\\s*([^.;:]+?)\\.\\s*\\d{4}(?:\\s|;|:|\\.|$)")[, 2]
+  j <- .clean_journal_candidate(j)
+  ifelse(is.na(j), "", j)
+}
+
+.split_ama_refs <- function(txt){
+  txt <- paste(txt, collapse = "\n")
+  txt <- gsub("\r\n|\r", "\n", txt)
+  txt <- trimws(txt)
+  if (!nzchar(txt)) return(character(0))
+
+  refs <- unlist(strsplit(txt, "\n(?=\\s*\\d+\\s*[:.])", perl = TRUE))
+  refs <- trimws(refs)
+  refs <- refs[nzchar(refs)]
+
+  if (length(refs) <= 1) {
+    refs2 <- unlist(strsplit(txt, "\n\\s*\n+", perl = TRUE))
+    refs2 <- trimws(refs2)
+    refs2 <- refs2[nzchar(refs2)]
+    if (length(refs2) > length(refs)) refs <- refs2
+  }
+  refs
+}
+
+.extract_ama_pubmed_journal_results <- function(txt, top_n = 20){
+  top_n <- max(1, suppressWarnings(as.integer(top_n))[1] %||% 20L)
+
+  # Always try MEDLINE JT/TA/SO first. This avoids the old error where years
+  # such as 2022/2023/2024 were counted as journal names.
+  medline_df <- if (grepl("(?m)^(JT|TA|SO)\\s*-\\s*", txt, perl = TRUE)) {
+    .extract_journals_from_medline_txt(txt)
+  } else data.frame()
+
+  if (is.data.frame(medline_df) && nrow(medline_df) > 0) {
+    journal_df <- medline_df
+  } else {
+    refs <- .split_ama_refs(txt)
+    journal_df <- data.frame(
+      reference_no = seq_along(refs),
+      reference = refs,
+      journal = vapply(refs, .extract_journal_from_pubmed_summary_ref, character(1)),
+      stringsAsFactors = FALSE
+    )
+    journal_df$journal <- .clean_journal_candidate(journal_df$journal)
+    journal_df <- journal_df[!is.na(journal_df$journal) & journal_df$journal != "", , drop = FALSE]
+  }
+
+  if (!nrow(journal_df)) {
+    return(list(journals = journal_df,
+                top = data.frame(journal = character(), frequency = integer()),
+                total_refs = 0L))
+  }
+
+  top_df <- journal_df |>
+    dplyr::count(journal, name = "frequency", sort = TRUE) |>
+    dplyr::slice_head(n = top_n)
+
+  list(journals = journal_df, top = top_df, total_refs = nrow(journal_df))
+}
+
+.plot_ama_journal_pie <- function(top_df){
+  if (is.null(top_df) || !is.data.frame(top_df) || !nrow(top_df)) {
+    plot.new(); text(0.5, 0.5, "No journal data available."); return(invisible(NULL))
+  }
+  df <- top_df |>
+    dplyr::mutate(
+      journal_short = ifelse(nchar(journal) > 30, paste0(substr(journal, 1, 30), "..."), journal),
+      pct = frequency / sum(frequency),
+      label = paste0(journal_short, "\n", frequency, " (", round(pct * 100, 1), "%)")
+    )
+
+  ggplot2::ggplot(df, ggplot2::aes(x = "", y = frequency, fill = journal_short)) +
+    ggplot2::geom_col(width = 1, color = "white") +
+    ggplot2::coord_polar(theta = "y") +
+    ggplot2::geom_text(ggplot2::aes(label = label),
+                       position = ggplot2::position_stack(vjust = 0.5),
+                       size = 3) +
+    ggplot2::labs(title = "Top Journal Frequency Pie Plot", fill = "Journal") +
+    ggplot2::theme_void(base_size = 13) +
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"),
+                   legend.position = "right")
+}
+
+
+
+# ============================================================
+# AMA/PubMed author + journal extraction for FLCA-MA-SIL
+# ============================================================
+.ref_is_doi_fragment <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- trimws(tolower(x))
+  out <- x == "" |
+    grepl("^10\\.", x) |
+    grepl("^\\d{3,}/", x) |
+    grepl("journal\\.", x) |
+    grepl("/", x)
+  out[is.na(out)] <- TRUE
+  out
+}
+
+.ref_is_access_fragment <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  z <- trimws(tolower(enc2utf8(x)))
+  out <- z == "" |
+    grepl("\\b(accessed|retrieved|cited|available from|available at|last accessed|access date)\\b", z, perl = TRUE) |
+    grepl("\\b(accessed|retrieved)\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|[0-9])", z, perl = TRUE) |
+    grepl("\\bpublished\\s+((online|ahead of print)\\s+)?(19|20)[0-9]{2}\\b", z, perl = TRUE) |
+    grepl("(取自|檢索|检索|瀏覽|浏览|取得|查詢|查询)", z, perl = TRUE) |
+    grepl("https?://|www[.]", z, perl = TRUE)
+  out[is.na(out)] <- TRUE
+  out
+}
+
+
+# Reject article-title fragments that are often misread as journal names
+# when pasted AMA/PubMed references contain a title followed by a year.
+.ref_title_like_journal_fragment <- function(x) {
+  x0 <- enc2utf8(as.character(x %||% ""))
+  x0[is.na(x0)] <- ""
+  z <- tolower(x0)
+  z <- gsub("[.]+", " ", z, perl = TRUE)
+  z <- gsub("[[:space:]]+", " ", z, perl = TRUE)
+  z <- trimws(z)
+
+  # Title fragments frequently end with a preposition immediately before the year,
+  # e.g., "A bibliometric analysis from 2024" or "impact of 2024".
+  # Real journal abbreviations normally end with a capitalized journal token or a
+  # balanced parenthetical qualifier, e.g., "Medicine (Baltimore)".
+  ends_with_prep <- grepl("\\b(from|of|for|with|without|among|between|in|on|to|by|about|against|during|after|before|under|over|into|through|via)$", z, perl = TRUE)
+
+  # Lowercase running-sentence fragments are rejected unless they look like an
+  # accepted journal title pattern. This keeps title text out while still allowing
+  # official names such as "Journal of Advanced Nursing".
+  words0 <- unlist(strsplit(trimws(x0), "[[:space:]]+", perl = TRUE), use.names = FALSE)
+  words0 <- words0[nzchar(words0)]
+  first_lower <- length(words0) > 0 && grepl("^[a-z]", words0[1], perl = TRUE)
+  lower_words <- sum(grepl("^[a-z]", words0, perl = TRUE))
+  allowed_lower <- c("of", "and", "the", "in", "for")
+  bad_lower_sentence <- first_lower || any(grepl("^[a-z]", words0, perl = TRUE) & !(tolower(words0) %in% allowed_lower))
+
+  out <- !nzchar(z) |
+    ends_with_prep |
+    bad_lower_sentence |
+    grepl("\\bbibliometric analysis\\b", z, perl = TRUE) |
+    grepl("\\b(systematic|scoping|narrative|umbrella) review\\b", z, perl = TRUE) |
+    grepl("\\bmeta[ -]?analysis\\b", z, perl = TRUE) |
+    grepl("\\bcase report\\b|\\bresearch protocol\\b", z, perl = TRUE) |
+    grepl("\\b(from|between)\\s+(19|20)[0-9]{2}\\b.*\\b(to|and|through)\\b.*\\b(19|20)[0-9]{2}\\b", z, perl = TRUE) |
+    grepl("^(a|an|the)\\s+.+\\b(analysis|study|review|report|survey|assessment|evaluation)\\b", z, perl = TRUE) |
+    grepl("\\b(title|abstract|background|objective|methods?|results?|conclusions?)\\s*[:：]", z, perl = TRUE)
+  # Unbalanced punctuation such as "A bibliometric analysis (" is not a journal title.
+  out <- out | (grepl("\\(", x0, perl = TRUE) != grepl("\\)", x0, perl = TRUE)) |
+    (grepl("\\[", x0, perl = TRUE) != grepl("\\]", x0, perl = TRUE)) |
+    grepl("[\\(\\[]\\s*$", x0, perl = TRUE)
+  out[is.na(out)] <- TRUE
+  out
+}
+
+# Final journal-display normalization: remove period symbols inside journal names
+# (e.g., "J. Biol. Chem." -> "J Biol Chem") while keeping meaningful balanced
+# parenthetical qualifiers such as "Medicine (Baltimore)".
+.ref_clean_journal_symbols <- function(x) {
+  x <- enc2utf8(as.character(x %||% ""))
+  x[is.na(x)] <- ""
+  x <- gsub("[./／]+", " ", x, perl = TRUE)
+  x <- gsub("[,;:；：，]+", " ", x, perl = TRUE)
+  x <- gsub("[[:space:]]+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+.ref_split_refs_smart <- function(x) {
+  if (length(x) > 1L) x <- paste(x, collapse = "\n")
+  x <- enc2utf8(x)
+  x <- gsub("\r\n|\r", "\n", x)
+  x <- trimws(x)
+  if (!nzchar(x)) return(character(0))
+
+  if (grepl("(?m)^PMID\\s*-", x, perl = TRUE)) {
+    refs <- unlist(strsplit(x, "(?m)(?=^PMID\\s*-)", perl = TRUE), use.names = FALSE)
+    refs <- trimws(refs)
+    refs <- refs[nzchar(refs)]
+    if (length(refs)) return(refs)
+  }
+
+  chunks <- unlist(strsplit(x, "\\n\\s*\\n", perl = TRUE), use.names = FALSE)
+  chunks <- trimws(chunks)
+  chunks <- chunks[nzchar(chunks)]
+  if (length(chunks) > 1L) {
+    chunks <- gsub("\\s*\\n\\s*", " ", chunks, perl = TRUE)
+    return(trimws(gsub("\\s+", " ", chunks)))
+  }
+
+  extract_numbered <- function(txt) {
+    m <- gregexpr(
+      "(?ms)^\\s*(?:\\[?\\d+\\]?\\s*[:;.\\)]|\\d+\\s+)\\s*.*?(?=(?:\\n\\s*(?:\\[?\\d+\\]?\\s*[:;.\\)]|\\d+\\s+))|\\Z)",
+      txt, perl = TRUE
+    )
+    if (m[[1]][1] == -1) return(character(0))
+    refs <- regmatches(txt, m)[[1]]
+    refs <- gsub("\\s*\\n\\s*", " ", refs, perl = TRUE)
+    trimws(gsub("\\s+", " ", refs[nzchar(trimws(refs))]))
+  }
+
+  refs <- extract_numbered(x)
+  if (length(refs) > 1L) return(refs)
+
+  x_fix <- gsub("(?<!\\n)\\s(?=(?:\\[?\\d+\\]?\\s*[:;.\\)]))", "\n", x, perl = TRUE)
+  refs2 <- extract_numbered(x_fix)
+  if (length(refs2) > 1L) return(refs2)
+
+  lines <- trimws(unlist(strsplit(x, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- lines[nzchar(lines)]
+  trimws(gsub("\\s+", " ", lines))
+}
+
+.ref_medline_field <- function(block, tag) {
+  pat <- paste0("(?m)^", tag, "\\s*-\\s*(.*)$")
+  m <- gregexpr(pat, block, perl = TRUE)
+  if (m[[1]][1] == -1) return(character(0))
+  vals <- regmatches(block, m)[[1]]
+  vals <- sub(paste0("^", tag, "\\s*-\\s*"), "", vals, perl = TRUE)
+  vals <- trimws(gsub("\\s+", " ", vals))
+  vals[nzchar(vals)]
+}
+
+.ref_parse_medline <- function(block) {
+  au <- .ref_medline_field(block, "AU")
+  if (!length(au)) au <- .ref_medline_field(block, "FAU")
+  jt <- .ref_medline_field(block, "JT")
+  ta <- .ref_medline_field(block, "TA")
+  journal <- if (length(jt)) jt[1] else if (length(ta)) ta[1] else NA_character_
+  list(journal = journal, authors = au)
+}
+
+.ref_strip_tails <- function(s) {
+  sub("(published[[:space:]]+((online|ahead[[:space:]]+of[[:space:]]+print)[[:space:]]+)?(19|20)[0-9]{2}|doi[[:space:]]*:|pmid[[:space:]]*:|pmcid[[:space:]]*:|epub|accessed|retrieved|available[[:space:]]+(from|at)[[:space:]]*:|https?://|www[.]|取自|檢索|检索|瀏覽|浏览|取得|查詢|查询).*$",
+      "", s, perl = TRUE, ignore.case = TRUE)
+}
+
+.ref_norm_journal <- function(j) {
+  j0 <- trimws(gsub("\\s+", " ", as.character(j %||% "")))
+  j0 <- gsub("\\[Internet\\]", "", j0, ignore.case = TRUE)
+  j0 <- sub("(published[[:space:]]+((online|ahead[[:space:]]+of[[:space:]]+print)[[:space:]]+)?(19|20)[0-9]{2}|accessed|retrieved|available[[:space:]]+(from|at)|取自|檢索|检索|瀏覽|浏览|取得|查詢|查询).*$", "", j0, perl = TRUE, ignore.case = TRUE)
+  j0 <- trimws(sub("[\\.,;:/／；：，]+\\s*$", "", j0))
+  if (grepl("[:;]", j0)) {
+    parts <- trimws(unlist(strsplit(j0, "[:;]", perl = TRUE)))
+    parts <- parts[nzchar(parts) & !.ref_is_access_fragment(parts)]
+    if (length(parts)) j0 <- parts[length(parts)]
+  }
+  j <- .ref_clean_journal_symbols(j0)
+  if (!nzchar(j) || .ref_is_doi_fragment(j0) || .ref_is_access_fragment(j0) || .ref_title_like_journal_fragment(j0)) NA_character_ else j
+}
+
+
+.ref_journal_like <- function(x) {
+  if (is.null(x) || length(x) == 0 || is.na(x[1])) return(FALSE)
+  x <- trimws(as.character(x[1]))
+  if (!nzchar(x) || .ref_is_doi_fragment(x) || .ref_is_access_fragment(x) || .ref_title_like_journal_fragment(x)) return(FALSE)
+  # Authors usually contain commas; journal titles normally do not.
+  if (grepl(",", x)) return(FALSE)
+  if (grepl("^[a-z0-9\\-]+$", x)) return(FALSE)
+  if (grepl("\\b(from|of|for|with|without|among|between|in|on|to)$", x, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+  # Allow English journal names, short abbreviations such as JAMA, and Chinese journal names.
+  has_letter_or_han <- grepl("[A-Za-z]", x) || grepl("[\u4e00-\u9fff]", x)
+  if (!has_letter_or_han) return(FALSE)
+  grepl("\\s", x) || grepl("\\(", x) || nchar(x) >= 4 || grepl("^[A-Z]{2,10}$", x) || grepl("[\u4e00-\u9fff]", x)
+}
+
+
+
+.ref_extract_authors_ama <- function(ref) {
+  clean <- trimws(gsub("\\s+", " ", gsub("^\\s*(?:\\[\\d+\\]|\\(?\\d+\\)?|\\d+)\\s*[:;.\\)]?\\s*", "", ref, perl = TRUE)))
+  # Author segment ends at English period or Chinese full stop.
+  authors_str <- sub("^([^\\.。]+?)[\\.。].*$", "\\1", clean, perl = TRUE)
+  authors_str <- gsub("\\band\\b", ",", authors_str, ignore.case = TRUE)
+  # Split English AMA authors and Chinese author delimiters.
+  parts <- trimws(unlist(strsplit(authors_str, "\\s*,\\s*|、|；|;", perl = TRUE)))
+  parts <- parts[nzchar(parts)]
+  parts <- sub("[\\.。]+$", "", parts)
+  parts <- parts[!grepl("^et\\s*al\\.?$", parts, ignore.case = TRUE)]
+  # Keep English author/group names and Chinese personal/organization names.
+  keep <- grepl("[A-Za-z]", parts) | grepl("[\u4e00-\u9fff]", parts)
+  unique(parts[keep])
+}
+
+
+.ref_extract_journal_ama <- function(ref) {
+  s <- trimws(gsub("\\s+", " ", gsub("^\\s*(?:\\[\\d+\\]|\\(?\\d+\\)?|\\d+)\\s*[:;.\\)]?\\s*", "", ref, perl = TRUE)))
+  s <- .ref_strip_tails(s)
+  s <- gsub("[；：]", ";", s, perl = TRUE)
+  s <- gsub("([!?])+(\\s*)", ".\\2", s, perl = TRUE)
+
+  # Strict AMA/Vancouver rule:
+  #   Authors. Title. Journal Name. 2024;...
+  #   Authors. Title. Journal Name 2024;...
+  #   Authors. Title. Journal Name. 2024 Nov 3;...
+  #   Authors. Title. Journal Name 2024 Nov 3;...
+  #   Authors. Title. Journal Name. 2024/... or Journal Name 2024/...
+  # Also accept a space/end after year/date (Name. 2024 or Name 2024), but reject
+  # title fragments ending in prepositions such as from/of before the year.
+  .try_journal_candidate <- function(cand) {
+    cand0 <- .ref_norm_spaces2(cand)
+    # Reject title fragments ending with a preposition immediately before the
+    # publication year/date, e.g. "A bibliometric analysis from 2025" or
+    # "impact of 2025". Do not trim the preposition and retry, because that
+    # could turn a title fragment into a false journal name.
+    if (grepl("\\b(from|of|for|with|without|among|between|in|on|to|by|about|against|during|after|before|under|over|into|through|via)\\s*$", cand0, ignore.case = TRUE, perl = TRUE)) {
+      return(NA_character_)
+    }
+    cand <- .ref_norm_journal(cand0)
+    if (.ref_journal_like(cand)) return(cand)
+    NA_character_
+  }
+
+  token <- "(?:[A-Z(][A-Za-z&'()\\-/]*\\.?|[A-Z]{1,10}\\.?|[\u4e00-\u9fff]{2,})(?:[[:space:]]+|$)"
+  month_pat <- "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[A-Za-z.]*"
+  # Valid date/year markers. Examples: 2025; 2025/ 2025 Nov 3; 2025 Oct 24; 2025 Nov.
+  # The trailing look-ahead accepts semicolon/slash/comma/colon, whitespace, or end of string.
+  year_mark <- paste0("(?:19|20)[0-9]{2}(?:[[:space:]]+", month_pat, ")?(?:[[:space:]]+[0-3]?[0-9])?[[:space:]]*(?=$|[;,:/／；：，]|[[:space:]])")
+
+  pat_dot_year <- paste0("(?:^|[.!?][[:space:]]+)((?:", token, "){1,12})\\.[[:space:]]*", year_mark)
+  m <- gregexpr(pat_dot_year, s, perl = TRUE, ignore.case = FALSE)
+  hit <- regmatches(s, m)[[1]]
+  if (length(hit) && hit[1] != "") {
+    for (mm in rev(hit)) {
+      cand <- sub("^[.!?][[:space:]]+", "", mm, perl = TRUE)
+      cand <- sub(paste0("\\.[[:space:]]*", year_mark, ".*$"), "", cand, perl = TRUE)
+      j <- .try_journal_candidate(cand)
+      if (!is.na(j) && nzchar(j)) return(j)
+    }
+  }
+
+  pat_space_year <- paste0("(?:^|[.!?][[:space:]]+)((?:", token, "){1,12})", year_mark)
+  m <- gregexpr(pat_space_year, s, perl = TRUE, ignore.case = FALSE)
+  hit <- regmatches(s, m)[[1]]
+  if (length(hit) && hit[1] != "") {
+    for (mm in rev(hit)) {
+      cand <- sub("^[.!?][[:space:]]+", "", mm, perl = TRUE)
+      cand <- sub(paste0(year_mark, ".*$"), "", cand, perl = TRUE)
+      j <- .try_journal_candidate(cand)
+      if (!is.na(j) && nzchar(j)) return(j)
+    }
+  }
+
+  # Chinese or mixed references: journal segment often appears immediately before a year,
+  # e.g. 醫療資訊雜誌 2025；34(1)：42-52。
+  segs_cn <- trimws(unlist(strsplit(s, "[。]\\s*", perl = TRUE)))
+  segs_cn <- segs_cn[nzchar(segs_cn)]
+  if (length(segs_cn)) {
+    for (seg in rev(segs_cn)) {
+      if (grepl(paste0(year_mark), seg, perl = TRUE, ignore.case = TRUE)) {
+        cand <- sub(paste0("\\s*", year_mark, ".*$"), "", seg, perl = TRUE)
+        cand <- trimws(gsub("[；;:：,，/／]+$", "", cand, perl = TRUE))
+        j <- .try_journal_candidate(cand)
+        if (!is.na(j) && nzchar(j)) return(j)
+      }
+    }
+  }
+
+  # Conservative fallback: inspect only the text immediately before a valid
+  # publication year/date followed by a volume/date separator or space/end.
+  valid_year_pat <- year_mark
+  m <- regexpr(valid_year_pat, s, perl = TRUE, ignore.case = TRUE)
+  if (m[1] > 0) {
+    pre <- substr(s, 1, m[1] - 1)
+    pre <- trimws(sub("[\\.[:space:]]+$", "", pre, perl = TRUE))
+    # Try suffixes after sentence boundaries while preserving journal abbreviations.
+    pieces <- trimws(unlist(strsplit(pre, "\\.[[:space:]]+", perl = TRUE)))
+    pieces <- pieces[nzchar(pieces)]
+    if (length(pieces)) {
+      for (k in seq_along(pieces)) {
+        cand <- paste(pieces[k:length(pieces)], collapse = " ")
+        j <- .try_journal_candidate(cand)
+        if (!is.na(j) && nzchar(j)) return(j)
+      }
+    }
+  }
+  NA_character_
+}
+
+
+
+.ref_parse_one <- function(ref) {
+  if (grepl("(?m)^PMID\\s*-", ref, perl = TRUE)) return(.ref_parse_medline(ref))
+  list(journal = .ref_extract_journal_ama(ref), authors = .ref_extract_authors_ama(ref))
+}
+
+.ref_to_wide <- function(refs, fallback_author_to_journal = TRUE) {
+  # IMPORTANT: preserve line breaks in MEDLINE/NBIB blocks.
+  # Collapsing whitespace here makes AU/JT/TA lines disappear and causes DOI/SO fragments to become nodes.
+  refs <- enc2utf8(as.character(refs))
+  refs <- trimws(refs)
+  refs <- refs[nzchar(refs)]
+  if (!length(refs)) stop("No usable reference entries detected.", call. = FALSE)
+
+  parsed <- lapply(refs, .ref_parse_one)
+  journal <- vapply(parsed, function(z) z$journal %||% NA_character_, character(1))
+  authors_list <- lapply(parsed, function(z) unique(trimws(as.character(z$authors %||% character(0)))))
+  authors_list <- lapply(authors_list, function(v) v[nzchar(v) & !is.na(v)])
+
+  if (isTRUE(fallback_author_to_journal)) {
+    for (i in seq_along(journal)) {
+      if (is.na(journal[i]) || !nzchar(journal[i]) || .ref_is_doi_fragment(journal[i])) {
+        first_author <- if (length(authors_list[[i]]) >= 1) authors_list[[i]][1] else NA_character_
+        if (!is.na(first_author) && nzchar(first_author)) {
+          journal[i] <- first_author
+          authors_list[[i]] <- authors_list[[i]][-1]
+        }
+      }
+    }
+  }
+
+  max_authors <- max(1L, max(lengths(authors_list), na.rm = TRUE))
+  out <- data.frame(Journal = journal, stringsAsFactors = FALSE, check.names = FALSE)
+  for (k in seq_len(max_authors)) {
+    out[[paste0("Author_", k)]] <- vapply(authors_list, function(v) if (length(v) >= k) v[k] else NA_character_, character(1))
+  }
+  out$Journal <- trimws(as.character(out$Journal))
+  out$Journal[is.na(out$Journal) | .ref_is_doi_fragment(out$Journal)] <- ""
+  if ("Author_1" %in% names(out)) {
+    same <- !is.na(out$Author_1) & nzchar(out$Author_1) & out$Author_1 == out$Journal
+    out$Author_1[same] <- NA_character_
+  }
+  out[is.na(out)] <- ""
+  out
+}
+
+.ref_valid_node <- function(x) {
+  x <- trimws(gsub("^doi\\s*:?\\s*", "", as.character(x %||% ""), ignore.case = TRUE, perl = TRUE))
+  if (!nzchar(x) || .ref_is_doi_fragment(x)) return(FALSE)
+  if (grepl("^PMID|^PMCID", x, ignore.case = TRUE)) return(FALSE)
+  grepl("[A-Za-z]", x)
+}
+
+.ref_build_nodes_edges <- function(wide, top_n = Inf) {
+  rows_terms <- lapply(seq_len(nrow(wide)), function(i) {
+    # Keep Journal and Author columns explicitly.  This is important for
+    # Google Scholar profile rows because the source line is the journal/source
+    # term and should participate in the co-word network with authors.
+    j <- character(0)
+    if ("Journal" %in% names(wide)) {
+      j <- trimws(as.character(wide[i, "Journal", drop = TRUE]))
+      j <- j[!is.na(j) & nzchar(j)]
+      # Journal names are already cleaned by .ref_gs_clean_source_to_journal()
+      # or .ref_clean_journal_strict(); do not reject them with title-fragment
+      # rules that can remove lowercase real journal names.
+      j <- j[!vapply(j, .ref_is_doi_fragment, logical(1)) & !vapply(j, .ref_is_access_fragment, logical(1))]
+    }
+    author_cols <- grep("^Author_", names(wide), value = TRUE)
+    a <- character(0)
+    if (length(author_cols)) {
+      a <- unlist(wide[i, author_cols, drop = FALSE], use.names = FALSE)
+      a <- trimws(as.character(a))
+      a <- a[!is.na(a) & nzchar(a)]
+      a <- a[vapply(a, .ref_valid_node, logical(1))]
+    }
+    v <- unique(c(j, a))
+    v
+  })
+  rows_terms <- rows_terms[lengths(rows_terms) > 0]
+  if (!length(rows_terms)) stop("No usable author/journal terms after cleaning.", call. = FALSE)
+
+  # Keep a journal dictionary so real journal/source names are not removed by
+  # author-oriented node filters.  This is essential for Google Scholar profile
+  # rows, where the third line is the journal/source term.
+  journal_set <- character(0)
+  if ("Journal" %in% names(wide)) {
+    journal_set <- trimws(as.character(wide$Journal))
+    journal_set <- journal_set[!is.na(journal_set) & nzchar(journal_set)]
+    journal_set <- unique(journal_set)
+  }
+
+  tb <- sort(table(unlist(rows_terms, use.names = FALSE)), decreasing = TRUE)
+  nodes <- data.frame(name = names(tb), value = as.numeric(tb), stringsAsFactors = FALSE, check.names = FALSE)
+  nodes$term_type <- ifelse(nodes$name %in% journal_set, "Journal", "Author")
+  ok_node <- nodes$term_type == "Journal" | vapply(nodes$name, .ref_valid_node, logical(1))
+  nodes <- nodes[ok_node, , drop = FALSE]
+  nodes <- nodes[order(-nodes$value, nodes$term_type, nodes$name), , drop = FALSE]
+  if (is.finite(top_n) && nrow(nodes) > top_n) nodes <- nodes[seq_len(top_n), , drop = FALSE]
+
+  selected_all <- nodes$name
+  edge_list <- list(); kk <- 0L
+  for (terms in rows_terms) {
+    terms <- sort(unique(terms[terms %in% selected_all]))
+    if (length(terms) < 2) next
+    for (pair in utils::combn(terms, 2, simplify = FALSE)) {
+      kk <- kk + 1L
+      edge_list[[kk]] <- data.frame(Leader = pair[1], Follower = pair[2], WCD = 1, stringsAsFactors = FALSE)
+    }
+  }
+  if (length(edge_list)) {
+    edge_df <- dplyr::bind_rows(edge_list)
+    edges <- stats::aggregate(WCD ~ Leader + Follower, data = edge_df, FUN = sum)
+    edges <- edges[order(-edges$WCD, edges$Leader, edges$Follower), , drop = FALSE]
+  } else {
+    edges <- data.frame(Leader = character(0), Follower = character(0), WCD = numeric(0), stringsAsFactors = FALSE)
+  }
+  nodes$carac <- 1L
+  nodes$value2 <- nodes$value
+  rownames(nodes) <- NULL
+  rownames(edges) <- NULL
+  list(nodes = nodes, edges = edges, rows_terms = rows_terms)
+}
+
+.ref_run_flca_top20 <- function(nodes, edges) {
+  if (!is.data.frame(nodes) || !nrow(nodes)) stop("No nodes available for FLCA.", call. = FALSE)
+  if (!is.data.frame(edges)) edges <- data.frame(Leader=character(0), Follower=character(0), WCD=numeric(0))
+
+  nodes <- as.data.frame(nodes, stringsAsFactors = FALSE, check.names = FALSE)
+  if (!"name" %in% names(nodes)) stop("nodes must contain name.", call. = FALSE)
+  if (!"value" %in% names(nodes)) nodes$value <- 1
+  nodes$name <- trimws(as.character(nodes$name))
+  nodes$value <- suppressWarnings(as.numeric(nodes$value))
+  nodes$value[!is.finite(nodes$value)] <- 1
+  keep_cols <- intersect(c("name", "value", "term_type"), names(nodes))
+  nodes <- nodes[nzchar(nodes$name), keep_cols, drop = FALSE]
+  if (!"term_type" %in% names(nodes)) nodes$term_type <- "Author"
+  nodes$term_type[is.na(nodes$term_type) | !nzchar(nodes$term_type)] <- "Author"
+  nodes <- nodes[!duplicated(nodes$name), , drop = FALSE]
+
+  edges <- as.data.frame(edges, stringsAsFactors = FALSE, check.names = FALSE)
+  if ("follower" %in% names(edges) && !("Follower" %in% names(edges))) names(edges)[names(edges) == "follower"] <- "Follower"
+  if (!("Leader" %in% names(edges)) && "Source" %in% names(edges)) names(edges)[names(edges) == "Source"] <- "Leader"
+  if (!("Follower" %in% names(edges)) && "Target" %in% names(edges)) names(edges)[names(edges) == "Target"] <- "Follower"
+  if (!("WCD" %in% names(edges))) edges$WCD <- 1
+  if (!all(c("Leader","Follower","WCD") %in% names(edges))) edges <- data.frame(Leader=character(0), Follower=character(0), WCD=numeric(0))
+  edges$Leader <- trimws(as.character(edges$Leader))
+  edges$Follower <- trimws(as.character(edges$Follower))
+  edges$WCD <- suppressWarnings(as.numeric(edges$WCD))
+  edges$WCD[!is.finite(edges$WCD)] <- 1
+  edges <- edges[nzchar(edges$Leader) & nzchar(edges$Follower) & edges$Leader != edges$Follower, c("Leader","Follower","WCD"), drop = FALSE]
+  edges <- edges[edges$Leader %in% nodes$name & edges$Follower %in% nodes$name, , drop = FALSE]
+
+  # Google Scholar / pasted author-journal mode:
+  # use the raw author+journal frequency Top20 as the source of truth so high-frequency
+  # journals (e.g., Medicine) cannot be dropped by major-sampling of author clusters.
+  # We still compute value2, clusters, and silhouette-like columns for the same
+  # Network / SSplot / Kano downstream panels.
+  if ("term_type" %in% names(nodes) && any(nodes$term_type == "Journal", na.rm = TRUE)) {
+    if (nrow(edges) > 0) {
+      strength_df <- rbind(
+        data.frame(name = edges$Leader,   value2 = edges$WCD, stringsAsFactors = FALSE),
+        data.frame(name = edges$Follower, value2 = edges$WCD, stringsAsFactors = FALSE)
+      )
+      strength_df <- stats::aggregate(value2 ~ name, strength_df, sum)
+      nodes$value2 <- strength_df$value2[match(nodes$name, strength_df$name)]
+      nodes$value2[!is.finite(nodes$value2) | is.na(nodes$value2)] <- nodes$value[!is.finite(nodes$value2) | is.na(nodes$value2)]
+    } else {
+      nodes$value2 <- nodes$value
+    }
+    # Frequency-first Top20; journals and authors are allowed together.
+    nodes <- nodes[order(-nodes$value, -nodes$value2, nodes$term_type, nodes$name), , drop = FALSE]
+    nd <- utils::head(nodes, 20)
+    selected <- as.character(nd$name)
+    ed <- edges[edges$Leader %in% selected & edges$Follower %in% selected, , drop = FALSE]
+
+    k <- min(5L, nrow(nd))
+    leaders <- nd$name[seq_len(k)]
+    nd$carac <- match(nd$name, leaders)
+    nd$carac[is.na(nd$carac)] <- NA_integer_
+    if (nrow(ed) > 0 && length(leaders) > 0) {
+      for (ii in which(is.na(nd$carac))) {
+        nm <- nd$name[ii]
+        hit <- ed[(ed$Leader == nm & ed$Follower %in% leaders) | (ed$Follower == nm & ed$Leader %in% leaders), , drop = FALSE]
+        if (nrow(hit) > 0) {
+          hit$leader_hit <- ifelse(hit$Leader %in% leaders, hit$Leader, hit$Follower)
+          hit <- hit[order(-hit$WCD), , drop = FALSE]
+          nd$carac[ii] <- match(hit$leader_hit[1], leaders)
+        }
+      }
+    }
+    nd$carac[is.na(nd$carac)] <- ((seq_len(nrow(nd))[is.na(nd$carac)] - 1L) %% max(1L, k)) + 1L
+    nd$ssi <- 0; nd$a_i <- 0; nd$b_i <- 0; nd$a_star1 <- 0
+    if (exists("compute_silhouette_df", mode = "function") && nrow(ed) > 0 && length(unique(nd$carac)) >= 2) {
+      sil_df <- tryCatch({
+        ed2 <- ed
+        if ("Follower" %in% names(ed2) && !("follower" %in% names(ed2))) ed2$follower <- ed2$Follower
+        compute_silhouette_df(nd, ed2)
+      }, error = function(e) NULL)
+      if (is.data.frame(sil_df) && nrow(sil_df) && "name" %in% names(sil_df)) {
+        sx <- match(nd$name, as.character(sil_df$name))
+        for (cc in c("ssi", "sil_width", "a_i", "b_i", "a_star1", "a_star")) {
+          if (cc %in% names(sil_df)) {
+            val <- suppressWarnings(as.numeric(sil_df[[cc]][sx]))
+            val[!is.finite(val)] <- 0
+            if (cc == "sil_width") nd$ssi <- val
+            else if (cc == "a_star") nd$a_star1 <- val
+            else nd[[cc]] <- val
+          }
+        }
+      }
+    }
+    nd$SSi <- nd$ssi
+    nd$a_star <- nd$a_star1
+    nd <- nd[order(-nd$value, -nd$value2, nd$term_type, nd$name), , drop = FALSE]
+    rownames(nd) <- NULL
+    rownames(ed) <- NULL
+    return(list(nodes = nd, edges = ed, engine = "Journal/Author Frequency Top20 + FLCA-style clustering"))
+  }
+
+  # Prefer the existing app wrapper, which calls flca_ms_sil_module.R / flca_ma_sil_module.R.
+  if (exists("run_flca_ms_sil_internal", mode = "function") && nrow(edges) > 0 && nrow(nodes) >= 3) {
+    out <- tryCatch(
+      run_flca_ms_sil_internal(nodes, edges, cfg = list(top_clusters = 5, base_per_cluster = 4, target_n = 20), verbose = FALSE),
+      error = function(e) {
+        message("[AMA FLCA-MA-SIL] run_flca_ms_sil_internal failed: ", conditionMessage(e))
+        NULL
+      }
+    )
+    if (!is.null(out) && is.data.frame(out$nodes) && nrow(out$nodes)) {
+      nd <- out$nodes
+      ed <- out$data
+      if ("follower" %in% names(ed) && !("Follower" %in% names(ed))) names(ed)[names(ed) == "follower"] <- "Follower"
+      return(list(nodes = nd, edges = ed, engine = "FLCA-MA-SIL"))
+    }
+  }
+
+  # Direct module runner fallback if the internal wrapper was not available.
+  if (exists("run_flca_ms_sil", mode = "function") && nrow(edges) > 0 && nrow(nodes) >= 3) {
+    edges_sym <- rbind(
+      data.frame(Leader = edges$Leader, follower = edges$Follower, WCD = edges$WCD, stringsAsFactors = FALSE),
+      data.frame(Leader = edges$Follower, follower = edges$Leader, WCD = edges$WCD, stringsAsFactors = FALSE)
+    )
+    out <- tryCatch(run_flca_ms_sil(list(nodes = nodes, data = edges_sym)), error = function(e) {
+      message("[AMA FLCA-MA-SIL] direct module failed: ", conditionMessage(e)); NULL
+    })
+    if (!is.null(out) && is.data.frame(out$nodes) && nrow(out$nodes)) {
+      nd <- out$nodes
+      if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+      if (!"ssi" %in% names(nd)) nd$ssi <- 0
+      if (!"a_i" %in% names(nd)) nd$a_i <- 0
+      if (!"b_i" %in% names(nd)) nd$b_i <- 0
+      if (!"a_star1" %in% names(nd)) nd$a_star1 <- 0
+      nd <- nd[order(-suppressWarnings(as.numeric(nd$value)), as.character(nd$name)), , drop = FALSE]
+      nd <- utils::head(nd, 20)
+      selected <- as.character(nd$name)
+      ed <- edges[edges$Leader %in% selected & edges$Follower %in% selected, , drop = FALSE]
+      return(list(nodes = nd, edges = ed, engine = "FLCA-MA-SIL"))
+    }
+  }
+
+  # ------------------------------------------------------------
+  # Built-in fallback: FLCA-MA-SIL-like Top20 if external module is absent.
+  # This prevents the Shiny app from shutting down when flca_ms_sil_module.R
+  # is not present in the app folder. It still forces the same Top20 source
+  # for Network, SSplot, Kano, node table, and edge table.
+  # ------------------------------------------------------------
+  message("[AMA FLCA-MA-SIL] External module unavailable; using built-in safe FLCA-MA-SIL fallback.")
+
+  # value2 = incident edge strength, then major-sampling Top20 by value/value2
+  if (nrow(edges) > 0) {
+    strength_df <- rbind(
+      data.frame(name = edges$Leader,   value2 = edges$WCD, stringsAsFactors = FALSE),
+      data.frame(name = edges$Follower, value2 = edges$WCD, stringsAsFactors = FALSE)
+    )
+    strength_df <- stats::aggregate(value2 ~ name, strength_df, sum)
+    nodes$value2 <- strength_df$value2[match(nodes$name, strength_df$name)]
+    nodes$value2[!is.finite(nodes$value2) | is.na(nodes$value2)] <- nodes$value[!is.finite(nodes$value2) | is.na(nodes$value2)]
+  } else {
+    nodes$value2 <- nodes$value
+  }
+
+  nodes <- nodes[order(-nodes$value, -nodes$value2, nodes$name), , drop = FALSE]
+  nd <- utils::head(nodes, 20)
+  selected <- as.character(nd$name)
+  ed <- edges[edges$Leader %in% selected & edges$Follower %in% selected, , drop = FALSE]
+
+  # Choose up to 5 leaders and assign followers by strongest connection to leaders.
+  k <- min(5L, nrow(nd))
+  leaders <- nd$name[seq_len(k)]
+  nd$carac <- match(nd$name, leaders)
+  nd$carac[is.na(nd$carac)] <- NA_integer_
+
+  if (nrow(ed) > 0 && length(leaders) > 0) {
+    for (ii in which(is.na(nd$carac))) {
+      nm <- nd$name[ii]
+      hit <- ed[(ed$Leader == nm & ed$Follower %in% leaders) | (ed$Follower == nm & ed$Leader %in% leaders), , drop = FALSE]
+      if (nrow(hit) > 0) {
+        hit$leader_hit <- ifelse(hit$Leader %in% leaders, hit$Leader, hit$Follower)
+        hit <- hit[order(-hit$WCD), , drop = FALSE]
+        nd$carac[ii] <- match(hit$leader_hit[1], leaders)
+      }
+    }
+  }
+  nd$carac[is.na(nd$carac)] <- ((seq_len(nrow(nd))[is.na(nd$carac)] - 1L) %% max(1L, k)) + 1L
+
+  # Silhouette-like defaults. If compute_silhouette_df exists and edges are enough, use it safely.
+  nd$ssi <- 0; nd$a_i <- 0; nd$b_i <- 0; nd$a_star1 <- 0
+  if (exists("compute_silhouette_df", mode = "function") && nrow(ed) > 0 && length(unique(nd$carac)) >= 2) {
+    sil_df <- tryCatch({
+      ed2 <- ed
+      if ("Follower" %in% names(ed2) && !("follower" %in% names(ed2))) ed2$follower <- ed2$Follower
+      compute_silhouette_df(nd, ed2)
+    }, error = function(e) {
+      message("[AMA FLCA-MA-SIL fallback] silhouette failed: ", conditionMessage(e)); NULL
+    })
+    if (is.data.frame(sil_df) && nrow(sil_df) && "name" %in% names(sil_df)) {
+      sx <- match(nd$name, as.character(sil_df$name))
+      for (cc in c("ssi", "sil_width", "a_i", "b_i", "a_star1", "a_star")) {
+        if (cc %in% names(sil_df)) {
+          val <- suppressWarnings(as.numeric(sil_df[[cc]][sx]))
+          val[!is.finite(val)] <- 0
+          if (cc == "sil_width") nd$ssi <- val
+          else if (cc == "a_star") nd$a_star1 <- val
+          else nd[[cc]] <- val
+        }
+      }
+    }
+  }
+  nd$SSi <- nd$ssi
+  nd$a_star <- nd$a_star1
+  nd <- nd[order(-nd$value, -nd$value2, nd$name), , drop = FALSE]
+  rownames(nd) <- NULL
+  rownames(ed) <- NULL
+  return(list(nodes = nd, edges = ed, engine = "Internal FLCA-MA-SIL fallback"))
+}
+
+
+# ---- Safe coercion for AMA author/journal plots ----
+# Prevents htmltools/grid/text functions from receiving list/data-frame/factor labels.
+.ref_safe_text <- function(x) {
+  x <- as.character(unlist(x, use.names = FALSE))
+  x[is.na(x)] <- ""
+  x <- enc2utf8(x)
+  x <- gsub("[\r\n\t]+", " ", x, perl = TRUE)
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+.ref_safe_num <- function(x, default = 0) {
+  y <- suppressWarnings(as.numeric(x))
+  y[!is.finite(y) | is.na(y)] <- default
+  y
+}
+
+.ref_sanitize_plot_payload <- function(nodes, edges) {
+  nodes <- as.data.frame(nodes, stringsAsFactors = FALSE, check.names = FALSE)
+  if (!"name" %in% names(nodes)) nodes$name <- seq_len(nrow(nodes))
+  nodes$name <- .ref_safe_text(nodes$name)
+  nodes <- nodes[nzchar(nodes$name), , drop = FALSE]
+  nodes <- nodes[!duplicated(nodes$name), , drop = FALSE]
+
+  if (!"value" %in% names(nodes)) nodes$value <- 1
+  nodes$value <- .ref_safe_num(nodes$value, default = 1)
+  if (!"value2" %in% names(nodes)) nodes$value2 <- nodes$value
+  nodes$value2 <- .ref_safe_num(nodes$value2, default = nodes$value)
+  if (!"carac" %in% names(nodes)) nodes$carac <- 1
+  nodes$carac <- as.integer(.ref_safe_num(nodes$carac, default = 1))
+  nodes$carac[is.na(nodes$carac)] <- 1L
+  # compact cluster labels for plotting/display; keeps FLCA grouping but avoids non-consecutive IDs
+  nodes$carac <- as.integer(factor(as.character(nodes$carac), levels = unique(as.character(nodes$carac))))
+  if (!"ssi" %in% names(nodes) && "SSi" %in% names(nodes)) nodes$ssi <- nodes$SSi
+  if (!"ssi" %in% names(nodes)) nodes$ssi <- 0
+  nodes$ssi <- .ref_safe_num(nodes$ssi, default = 0)
+  if (!"a_star1" %in% names(nodes) && "a_star" %in% names(nodes)) nodes$a_star1 <- nodes$a_star
+  if (!"a_star1" %in% names(nodes)) nodes$a_star1 <- 0
+  nodes$a_star1 <- .ref_safe_num(nodes$a_star1, default = 0)
+
+  nodes <- nodes[order(-nodes$value, nodes$name), , drop = FALSE]
+  rownames(nodes) <- NULL
+
+  if (is.null(edges) || !is.data.frame(edges) || !nrow(edges)) {
+    edges <- data.frame(Leader = character(0), Follower = character(0), WCD = numeric(0), stringsAsFactors = FALSE)
+  } else {
+    edges <- as.data.frame(edges, stringsAsFactors = FALSE, check.names = FALSE)
+    if ("follower" %in% names(edges) && !"Follower" %in% names(edges)) names(edges)[names(edges) == "follower"] <- "Follower"
+    if (!"Leader" %in% names(edges) && "from" %in% names(edges)) names(edges)[names(edges) == "from"] <- "Leader"
+    if (!"Follower" %in% names(edges) && "to" %in% names(edges)) names(edges)[names(edges) == "to"] <- "Follower"
+    if (!"WCD" %in% names(edges)) edges$WCD <- 1
+    edges$Leader <- .ref_safe_text(edges$Leader)
+    edges$Follower <- .ref_safe_text(edges$Follower)
+    edges$WCD <- .ref_safe_num(edges$WCD, default = 1)
+    edges <- edges[nzchar(edges$Leader) & nzchar(edges$Follower) & edges$Leader %in% nodes$name & edges$Follower %in% nodes$name, , drop = FALSE]
+    edges <- edges[edges$Leader != edges$Follower, , drop = FALSE]
+    rownames(edges) <- NULL
+  }
+
+  list(nodes = nodes, edges = edges)
+}
+
+.ref_format_numeric_2 <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+  int_cols <- intersect(c("rank", "carac", "cluster", "membership"), names(df))
+  num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+  for (cc in num_cols) {
+    if (cc %in% int_cols) {
+      df[[cc]] <- as.integer(round(df[[cc]], 0))
+    } else {
+      df[[cc]] <- round(df[[cc]], 2)
+    }
+  }
+  df
+}
+
+.ref_top20_check_df <- function(r) {
+  if (is.null(r) || is.null(r$nodes) || !is.data.frame(r$nodes)) {
+    return(data.frame(Message = "Click Run AMA author/journal extraction first.", stringsAsFactors = FALSE))
+  }
+  nd <- .ref_sanitize_plot_payload(r$nodes, r$edges)$nodes
+  if (!is.data.frame(nd) || !nrow(nd)) {
+    return(data.frame(Message = "No Top20 nodes available.", stringsAsFactors = FALSE))
+  }
+  # carac is a cluster label from FLCA-MA-SIL. Recode only the labels to compact 1..K
+  # for display and plotting; this avoids confusing large/non-consecutive cluster IDs.
+  if ("carac" %in% names(nd)) {
+    nd$carac <- as.integer(factor(as.character(nd$carac), levels = unique(as.character(nd$carac))))
+  }
+  keep <- intersect(c("name", "value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1"), names(nd))
+  out <- nd[, keep, drop = FALSE]
+  out$rank <- seq_len(nrow(out))
+  out <- out[, c("rank", setdiff(names(out), "rank")), drop = FALSE]
+  .ref_format_numeric_2(out)
+}
+
+
+
+# ============================================================
+# STRICT PubMed/AMA author+journal parser override
+# Purpose: ensure Top20 contains ONLY journal titles and author names.
+# It rejects title words, DOI fragments, SO/PST/AID lines, and one-letter nodes.
+# ============================================================
+.ref_norm_spaces2 <- function(x) {
+  x <- enc2utf8(as.character(x %||% ""))
+  x[is.na(x)] <- ""
+  x <- gsub("[‘’ʼ]", "'", x, perl = TRUE)
+  x <- gsub('[“”]', '"', x, perl = TRUE)
+  x <- gsub("[–—−]", "-", x, perl = TRUE)
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+
+  trimws(x)
+}
+
+# ---- Google Scholar profile pasted-text parser ----
+# Supports rows copied from a Google Scholar author profile table:
+#   Title
+#   AU1, AU2, AU3
+#   Journal/source volume(issue), pages
+#   cited_by<TAB>year    OR    year
+# It is intentionally local/offline: paste or browser-export text into the textarea.
+.ref_gs_is_year_line <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  grepl("^(?:[0-9,]+[[:space:]]+)?(?:19|20)\\d{2}$", z, perl = TRUE) ||
+    grepl("^[0-9,]+[[:space:]]*\\t[[:space:]]*(?:19|20)\\d{2}$", z, perl = TRUE)
+}
+
+.ref_gs_author_line_like <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  if (!nzchar(z)) return(FALSE)
+  if (.ref_gs_is_year_line(z)) return(FALSE)
+  if (grepl("^(Journals|Articles|Title|Cited by|Year)$", z, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+  # Google Scholar author rows are usually initials + surname separated by commas;
+  # allow a single-author row such as "TW Chien" as well.
+  has_comma <- grepl(",", z, fixed = TRUE)
+  m <- gregexpr("\\b[A-Z]{1,5}[[:space:]]+[A-Z][A-Za-z'\\-]+\\b", z, perl = TRUE)[[1]]
+  n_initial_names <- if (length(m) == 1L && m[1] == -1L) 0L else length(m)
+  has_initial_name <- n_initial_names >= 1L
+  has_initial_name && (has_comma || n_initial_names == 1L)
+}
+
+.ref_gs_clean_source_to_journal <- function(x) {
+  z0 <- .ref_norm_spaces2(x)
+  if (!nzchar(z0)) return(NA_character_)
+  z0 <- gsub("[[:space:]]*…[[:space:]]*$", "", z0, perl = TRUE)
+  z0 <- gsub("[[:space:]]*\\.\\.\\.[[:space:]]*$", "", z0, perl = TRUE)
+  # Remove common Google Scholar source suffixes: volume(issue), pages / volume, pages / volume, article id.
+  j <- sub("[[:space:]]+[0-9]+[A-Za-z]?[[:space:]]*(\\([^)]*\\))?[[:space:]]*,.*$", "", z0, perl = TRUE)
+  j <- sub("[[:space:]]+[0-9]+[A-Za-z]?[[:space:]]*(\\([^)]*\\))?[[:space:]]*$", "", j, perl = TRUE)
+  j <- sub("[[:space:]]+e[0-9]{3,}.*$", "", j, perl = TRUE, ignore.case = TRUE)
+  j <- .ref_norm_spaces2(j)
+  if (!nzchar(j)) j <- z0
+  j <- .ref_clean_journal_symbols(j)
+  j <- trimws(gsub("[.,;:/／；：，]+$", "", j, perl = TRUE))
+  if (!nzchar(j) || .ref_is_access_fragment(j) || .ref_is_doi_fragment(j)) return(NA_character_)
+  j
+}
+
+.ref_gs_split_authors <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  z <- gsub("\\s+(and|&)\\s+", ", ", z, ignore.case = TRUE, perl = TRUE)
+  z <- gsub("\\bet\\s+al\\.?", "", z, ignore.case = TRUE, perl = TRUE)
+  z <- gsub("\\.{2,}|…", "", z, perl = TRUE)
+  z <- gsub("[。；;、]", ",", z, perl = TRUE)
+  parts <- trimws(unlist(strsplit(z, "\\s*,\\s*", perl = TRUE), use.names = FALSE))
+  parts <- parts[nzchar(parts)]
+  parts <- parts[!grepl("^\\.$", parts)]
+  unique(na.omit(.ref_clean_author_strict(parts)))
+}
+
+.ref_parse_google_scholar_block <- function(block) {
+  lines <- unlist(strsplit(gsub("\\r\\n|\\r", "\\n", as.character(block %||% "")), "\\n", fixed = TRUE), use.names = FALSE)
+  lines <- .ref_norm_spaces2(lines)
+  lines <- lines[nzchar(lines)]
+  if (length(lines) < 4L) return(NULL)
+  # A Scholar block is title / authors / source / citation-year.
+  if (!.ref_gs_author_line_like(lines[2]) || !.ref_gs_is_year_line(lines[4])) return(NULL)
+  authors <- .ref_gs_split_authors(lines[2])
+  journal <- .ref_gs_clean_source_to_journal(lines[3])
+  if ((!length(authors)) && (is.na(journal) || !nzchar(journal))) return(NULL)
+  list(journal = ifelse(length(journal) && !is.na(journal), journal, ""), authors = authors)
+}
+
+.ref_split_google_scholar_profile_blocks <- function(txt) {
+  txt <- enc2utf8(as.character(txt %||% ""))
+  txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+  lines <- trimws(unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- .ref_norm_spaces2(lines)
+  lines <- lines[nzchar(lines)]
+  if (length(lines) < 4L) return(character(0))
+  # Drop common copied table headers/buttons.
+  bad <- grepl("^(Title|Authors|Publication|Journal|Cited by|Year|All|Since|Sort by|Show more|顯示更多|匯出|Export)$", lines, ignore.case = TRUE, perl = TRUE)
+  lines <- lines[!bad]
+  out <- character(0)
+  i <- 1L
+  while (i <= length(lines) - 3L) {
+    if (.ref_gs_author_line_like(lines[i + 1L]) && .ref_gs_is_year_line(lines[i + 3L])) {
+      out <- c(out, paste(lines[i:(i + 3L)], collapse = "\n"))
+      i <- i + 4L
+    } else {
+      i <- i + 1L
+    }
+  }
+  out <- out[nzchar(out)]
+  # Require at least two records to switch the whole textarea to Scholar mode.
+  if (length(out) >= 2L) out else character(0)
+}
+
+.ref_split_pubmed_blocks_strict <- function(txt) {
+  txt <- enc2utf8(as.character(txt %||% ""))
+  txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+  txt <- trimws(txt)
+  if (!nzchar(txt)) return(character(0))
+
+  # Google Scholar author-profile pasted rows: title / authors / source / cited-year.
+  gs_blocks <- .ref_split_google_scholar_profile_blocks(txt)
+  if (length(gs_blocks) >= 2L) return(gs_blocks)
+
+  # Best case: PubMed MEDLINE/NBIB blocks with PMID-
+  if (grepl("(?m)^PMID\\s*-", txt, perl = TRUE)) {
+    z <- unlist(strsplit(txt, "(?m)(?=^PMID\\s*-)", perl = TRUE), use.names = FALSE)
+    z <- trimws(z)
+    return(z[nzchar(z)])
+  }
+
+  # PubMed-like field blocks without PMID: collect until SO - line.
+  if (grepl("(?m)^(AU|FAU|JT|TA|SO|AID|PST)\\s*-", txt, perl = TRUE)) {
+    lines <- unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE)
+    blocks <- character(0); cur <- character(0); seen_field <- FALSE
+    for (ln in lines) {
+      if (grepl("^(AU|FAU|JT|TA|SO|AID|PST|TI|DP)\\s*-", ln, perl = TRUE)) seen_field <- TRUE
+      if (seen_field) cur <- c(cur, ln)
+      if (grepl("^SO\\s*-", ln, perl = TRUE) && length(cur)) {
+        blocks <- c(blocks, paste(cur, collapse = "\n"))
+        cur <- character(0); seen_field <- FALSE
+      }
+    }
+    if (length(cur)) blocks <- c(blocks, paste(cur, collapse = "\n"))
+    blocks <- trimws(blocks)
+    blocks <- blocks[nzchar(blocks)]
+    if (length(blocks)) return(blocks)
+  }
+
+  # AMA/Vancouver numbered references. Supports:
+  # [1] text, 1. text, 1: text, 1) text, and mixed Chinese/English references.
+  marker <- "(?:\\[\\d+\\]|\\(?\\d+\\)?|\\d+)\\s*[:;.\\)]?\\s+"
+  m <- gregexpr(paste0("(?ms)^\\s*", marker, ".*?(?=(?:\n\\s*", marker, ")|\\Z)"), txt, perl = TRUE)
+  if (m[[1]][1] != -1) {
+    refs <- regmatches(txt, m)[[1]]
+    refs <- trimws(gsub("\\s*\n\\s*", " ", refs, perl = TRUE))
+    refs <- refs[nzchar(refs)]
+    if (length(refs)) return(refs)
+  }
+
+  # Blank-line records, useful for pasted references without numbering.
+  chunks <- unlist(strsplit(txt, "\n\\s*\n", perl = TRUE), use.names = FALSE)
+  chunks <- trimws(chunks); chunks <- chunks[nzchar(chunks)]
+  if (length(chunks) > 1L) return(chunks)
+
+  # Last fallback: one reference per non-empty line.
+  lines <- trimws(unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- lines[nzchar(lines)]
+  if (length(lines) > 1L) return(lines)
+
+  character(0)
+}
+
+
+.ref_get_fields_strict <- function(block, tag) {
+  lines <- unlist(strsplit(gsub("\r\n|\r", "\n", as.character(block)), "\n", fixed = TRUE), use.names = FALSE)
+  vals <- character(0); cur <- NULL
+  for (ln in lines) {
+    if (grepl(paste0("^", tag, "\\s*-"), ln, perl = TRUE)) {
+      if (!is.null(cur)) vals <- c(vals, cur)
+      cur <- sub(paste0("^", tag, "\\s*-\\s*"), "", ln, perl = TRUE)
+    } else if (!is.null(cur) && grepl("^\\s{2,}\\S", ln, perl = TRUE) && !grepl("^[A-Z0-9]{2,4}\\s*-", ln, perl = TRUE)) {
+      cur <- paste(cur, trimws(ln))
+    } else if (grepl("^[A-Z0-9]{2,4}\\s*-", ln, perl = TRUE)) {
+      if (!is.null(cur)) vals <- c(vals, cur)
+      cur <- NULL
+    }
+  }
+  if (!is.null(cur)) vals <- c(vals, cur)
+  vals <- .ref_norm_spaces2(vals)
+  vals[nzchar(vals)]
+}
+
+.ref_journal_from_so_strict <- function(so) {
+  so <- .ref_norm_spaces2(so)
+  if (!length(so) || !nzchar(so[1])) return(NA_character_)
+  x <- so[1]
+  # SO - Medicine (Baltimore). 2025 Oct 24;104(43):e...
+  # Also accept SO strings without the period before year, or with slash/space after year:
+  #   Journal Name 2025;...   Journal Name. 2025/...   Journal Name. 2025 Nov 3;...
+  month_pat <- "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[A-Za-z.]*"
+  date_pat <- paste0("(?:19|20)\\d{2}(?:[[:space:]]+", month_pat, ")?(?:[[:space:]]+[0-3]?\\d)?")
+  j <- sub(paste0("(?:\\.[[:space:]]*|[[:space:]]+)", date_pat, "(?:[[:space:]]*(?:[;,:/／；：，]|$)|[[:space:]]+).*$"), "", x, perl = TRUE, ignore.case = TRUE)
+  j <- .ref_norm_spaces2(j)
+  if (!nzchar(j)) NA_character_ else j
+}
+
+.ref_clean_author_strict <- function(x) {
+  x <- .ref_norm_spaces2(x)
+  x <- gsub("^[[:punct:] ]+|[[:punct:] ]+$", "", x, perl = TRUE)
+  x <- trimws(gsub("\\s+", " ", x, perl = TRUE))
+
+  # English AMA/Google Scholar style:
+  #   Aiken LH, TW Chien, HF Lee, W Chou, R Core Team, Posit PBC.
+  # PATCH 2026-06-02: allow one-letter initial + surname (e.g., "W Chou").
+  # The old pattern required at least two leading letters, so "W Chou" was
+  # dropped; then the previous valid middle author could be mistaken as "last".
+  x <- gsub("\\b([A-Z])\\.[[:space:]]*", "\\1 ", x, perl = TRUE)
+  x <- trimws(gsub("\\s+", " ", x, perl = TRUE))
+  ok_en <- grepl("^[A-Z][A-Za-z' -]{1,50}(?:\\s+[A-Z][A-Za-z' -]{0,20}|\\s+[A-Z]{1,8})+$", x, perl = TRUE)
+  ok_initial_surname <- grepl("^[A-Z]{1,8}\\s+[A-Z][A-Za-z'\\-]{1,50}(?:\\s+[A-Z][A-Za-z'\\-]{1,50})?$", x, perl = TRUE)
+  ok_en <- ok_en | ok_initial_surname
+  # Chinese personal names and organization/group authors.
+  ok_zh <- grepl("^[\u4e00-\u9fff]{2,40}$", x, perl = TRUE)
+
+  bad <- is.na(x) | !nzchar(x) |
+    grepl("^(URL|http|https|www|doi|pmid|pmcid)\\b", x, ignore.case = TRUE, perl = TRUE) |
+    .ref_is_access_fragment(x) |
+    grepl("(?:研究|分析|比較|標準公告|公式|資訊公開|評鑑基準|資料開放平台).{4,}", x, perl = TRUE)
+
+  x[bad | !(ok_en | ok_zh)] <- NA_character_
+  x
+}
+
+
+.ref_clean_journal_strict <- function(x) {
+  x0 <- .ref_norm_spaces2(x)
+  x0 <- gsub("\\[Internet\\]", "", x0, ignore.case = TRUE, perl = TRUE)
+  x <- .ref_clean_journal_symbols(x0)
+  x <- trimws(gsub("[.,;:/／；：，]+$", "", x, perl = TRUE))
+  bad <- is.na(x) | !nzchar(x) |
+    .ref_is_doi_fragment(x0) | .ref_is_doi_fragment(x) |
+    .ref_is_access_fragment(x0) | .ref_is_access_fragment(x) |
+    .ref_title_like_journal_fragment(x0) | .ref_title_like_journal_fragment(x) |
+    grepl("\\[doi\\]|\\b(PST|SO|AID|PMID|PMCID)\\s*-", x0, ignore.case = TRUE, perl = TRUE) |
+    grepl("^(P|S|N)$", x, perl = TRUE) |
+    grepl("^[0-9]", x, perl = TRUE) |
+    grepl("case fatality|observational study|usability study|meta-analysis", x, ignore.case = TRUE, perl = TRUE)
+  x[bad] <- NA_character_
+  x
+}
+
+
+
+# ---- Exact journal-list / journal-frequency-table fallback ----
+# Some uploaded text already contains journal names (one per line) or a
+# journal-frequency table, rather than full AMA/PubMed references. The strict
+# AMA parser intentionally requires a year marker, so those exact journal lines
+# were previously dropped. This fallback accepts already-extracted journal names
+# only when the input clearly looks like a journal list/table, not a reference list.
+.ref_extract_existing_journal_records <- function(txt) {
+  empty <- data.frame(reference_no = integer(0), journal = character(0), stringsAsFactors = FALSE)
+  x <- enc2utf8(as.character(txt %||% ""))
+  x <- gsub("\r\n|\r", "\n", x, perl = TRUE)
+  if (!nzchar(trimws(x))) return(empty)
+
+  # Do not use this fallback for true MEDLINE/NBIB blocks or normal references.
+  medline_like <- grepl("(?m)^(PMID|AU|FAU|JT|TA|SO|TI|DP|AID|PST)\\s*-", x, perl = TRUE)
+
+  lines <- trimws(unlist(strsplit(x, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- lines[nzchar(lines)]
+  if (!length(lines)) return(empty)
+
+  # Remove common table headers/footers.
+  header_like <- grepl("^\\s*(journal|journal[ _-]*name|source[ _-]*title|frequency|freq|count|n|%)\\b", lines, ignore.case = TRUE, perl = TRUE) |
+    grepl("^\\s*total\\b", lines, ignore.case = TRUE, perl = TRUE)
+  work <- lines[!header_like]
+  work <- trimws(work)
+  work <- work[nzchar(work)]
+  if (!length(work)) return(empty)
+
+  has_table_header <- any(grepl("\\bjournal\\b", lines, ignore.case = TRUE, perl = TRUE) &
+                            grepl("\\b(frequency|freq|count|%)\\b", lines, ignore.case = TRUE, perl = TRUE))
+
+  parse_table_row <- function(ln) {
+    z <- trimws(ln)
+    z <- gsub("[|]", "\t", z, perl = TRUE)
+    z <- gsub(",", "\t", z, perl = TRUE)
+    # Prefer separated columns: journal <tab/2+ spaces> frequency [percent]
+    m <- regexec("^(.+?)(?:\\t+| {2,})\\s*([0-9]+)(?:\\s+[0-9]+(?:\\.[0-9]+)?%?)?\\s*$", z, perl = TRUE)
+    r <- regmatches(z, m)[[1]]
+    if (length(r) >= 3) return(list(journal = r[2], freq = suppressWarnings(as.integer(r[3]))))
+
+    # Fallback for copied Word/Excel rows collapsed to single spaces.
+    # Keep it table-only to avoid confusing full references with page numbers.
+    m <- regexec("^(.+?)\\s+([0-9]+)(?:\\s+[0-9]+(?:\\.[0-9]+)?%?)?\\s*$", z, perl = TRUE)
+    r <- regmatches(z, m)[[1]]
+    if (length(r) >= 3 && nchar(r[2]) <= 90 && !grepl("(19|20)\\d{2}\\s*[;:/／]", r[2], perl = TRUE)) {
+      return(list(journal = r[2], freq = suppressWarnings(as.integer(r[3]))))
+    }
+    NULL
+  }
+
+  parsed <- lapply(work, parse_table_row)
+  good <- vapply(parsed, function(z) !is.null(z) && is.finite(z$freq) && z$freq > 0, logical(1))
+  table_mode <- !isTRUE(medline_like) && (isTRUE(has_table_header) || sum(good) >= 2L)
+
+  if (isTRUE(table_mode)) {
+    parsed <- parsed[good]
+    journals <- vapply(parsed, function(z) z$journal, character(1))
+    freqs <- vapply(parsed, function(z) z$freq, integer(1))
+    journals <- .ref_clean_journal_strict(journals)
+    ok <- !is.na(journals) & nzchar(journals) & vapply(journals, .ref_journal_like, logical(1))
+    journals <- journals[ok]
+    freqs <- freqs[ok]
+    if (!length(journals)) return(empty)
+    # Replicate by frequency so the existing count() code stays unchanged.
+    out <- rep(journals, times = pmax(1L, freqs))
+    return(data.frame(reference_no = seq_along(out), journal = out, stringsAsFactors = FALSE))
+  }
+
+  # Journal-list mode: exact journal names, one per line, no frequencies.
+  # This accepts lines such as "Medicine (Baltimore)" or
+  # "Int J Environ Res Public Health" but rejects full article references.
+  if (!isTRUE(medline_like)) {
+    cand_raw <- work
+    too_reference_like <- grepl("(19|20)\\d{2}\\s*[;:/／]", cand_raw, perl = TRUE) |
+      grepl("\\bdoi\\b|https?://|PMID|PMCID", cand_raw, ignore.case = TRUE, perl = TRUE) |
+      nchar(cand_raw) > 90
+    cand <- .ref_clean_journal_strict(cand_raw)
+    ok <- !too_reference_like & !is.na(cand) & nzchar(cand) & vapply(cand, .ref_journal_like, logical(1))
+    if (sum(ok) >= 1L && mean(ok) >= 0.50) {
+      out <- cand[ok]
+      return(data.frame(reference_no = seq_along(out), journal = out, stringsAsFactors = FALSE))
+    }
+  }
+
+  empty
+}
+
+.ref_parse_block_strict <- function(block) {
+  # Google Scholar author-profile rows pasted from browser/table export.
+  gs <- .ref_parse_google_scholar_block(block)
+  if (!is.null(gs)) return(gs)
+
+  # MEDLINE/NBIB tags first.
+  au <- .ref_get_fields_strict(block, "AU")
+  if (!length(au)) au <- .ref_get_fields_strict(block, "FAU")
+  au <- unique(na.omit(.ref_clean_author_strict(au)))
+
+  jt <- .ref_get_fields_strict(block, "JT")
+  ta <- .ref_get_fields_strict(block, "TA")
+  so <- .ref_get_fields_strict(block, "SO")
+  journal <- if (length(jt)) jt[1] else if (length(ta)) ta[1] else .ref_journal_from_so_strict(so)
+  journal <- .ref_clean_journal_strict(journal)
+
+  # Fallback for AMA/Vancouver single-line reference.
+  if ((!length(au) || is.na(journal) || !nzchar(journal)) && !grepl("(?m)^(AU|FAU|JT|TA|SO)\\s*-", block, perl = TRUE)) {
+    j2 <- .ref_extract_journal_ama(block)
+    journal <- .ref_clean_journal_strict(j2)
+    au2 <- .ref_extract_authors_ama(block)
+    au <- unique(na.omit(.ref_clean_author_strict(au2)))
+  }
+
+  list(journal = ifelse(length(journal) && !is.na(journal), journal, ""), authors = au)
+}
+
+
+# ---- Robust Google Scholar profile pasted-row parser ----
+# Handles rows copied from Google Scholar author profile as:
+#   title / authors / journal-source / cited-by + year
+# This is deliberately independent of the stricter AMA parser so journal/source
+# rows such as "Medicine 102 (25), e34063" are kept as journal nodes.
+.ref_to_wide_google_scholar_force <- function(txt) {
+  txt <- enc2utf8(as.character(txt %||% ""))
+  txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+  lines <- trimws(unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- .ref_norm_spaces2(lines)
+  lines <- lines[nzchar(lines)]
+  if (length(lines) < 4L) return(data.frame())
+
+  bad <- grepl("^(Title|Authors|Publication|Journal|Cited by|Year|All|Since|Sort by|Show more|顯示更多|匯出|Export)$", lines,
+               ignore.case = TRUE, perl = TRUE)
+  lines <- lines[!bad]
+  if (length(lines) < 4L) return(data.frame())
+
+  is_year_line <- function(x) grepl("^(?:[0-9]+[[:space:]]+)?(?:19|20)[0-9]{2}$", trimws(x), perl = TRUE)
+  is_author_line <- function(x) {
+    z <- trimws(x)
+    if (!nzchar(z)) return(FALSE)
+    if (grepl("[0-9]{4}|http|doi|PMID|PMCID", z, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+    # Initials + surname, Chinese delimiters, or comma-separated byline.
+    m <- gregexpr("\\b[A-Z]{1,5}[[:space:]]+[A-Z][A-Za-z'\\-]+\\b", z, perl = TRUE)[[1]]
+    n0 <- if (length(m) == 1L && m[1] == -1L) 0L else length(m)
+    n0 >= 1L && (grepl(",|；|、", z, perl = TRUE) || n0 == 1L)
+  }
+  clean_journal <- function(x) {
+    z <- .ref_norm_spaces2(x)
+    z <- gsub("[[:space:]]*…[[:space:]]*$", "", z, perl = TRUE)
+    z <- gsub("[[:space:]]*\\.\\.\\.[[:space:]]*$", "", z, perl = TRUE)
+    # Remove volume/issue/pages/article-id after the source name.
+    z <- sub("[[:space:]]+[0-9]+[A-Za-z]?[[:space:]]*(\\([^)]*\\))?[[:space:]]*,.*$", "", z, perl = TRUE)
+    z <- sub("[[:space:]]+[0-9]+[A-Za-z]?[[:space:]]*(\\([^)]*\\))?[[:space:]]*$", "", z, perl = TRUE)
+    z <- sub("[[:space:]]+e[0-9]{3,}.*$", "", z, perl = TRUE, ignore.case = TRUE)
+    z <- trimws(gsub("[.,;:/／；：，]+$", "", z, perl = TRUE))
+    if (!nzchar(z) || .ref_is_doi_fragment(z) || .ref_is_access_fragment(z)) return(NA_character_)
+    z
+  }
+  split_authors <- function(x) {
+    z <- .ref_norm_spaces2(x)
+    z <- gsub("\\s+(and|&)\\s+", ", ", z, ignore.case = TRUE, perl = TRUE)
+    z <- gsub("\\bet\\s+al\\.?", "", z, ignore.case = TRUE, perl = TRUE)
+    z <- gsub("\\.{2,}|…", "", z, perl = TRUE)
+    z <- gsub("[。；;、]", ",", z, perl = TRUE)
+    parts <- trimws(unlist(strsplit(z, "\\s*,\\s*", perl = TRUE), use.names = FALSE))
+    parts <- parts[nzchar(parts)]
+    parts <- parts[grepl("[A-Za-z]|[\u4e00-\u9fff]", parts, perl = TRUE)]
+    parts <- parts[!grepl("^(and|et al)$", parts, ignore.case = TRUE, perl = TRUE)]
+    unique(parts)
+  }
+
+  rows <- list(); i <- 1L
+  while (i <= length(lines) - 3L) {
+    if (is_author_line(lines[i + 1L]) && is_year_line(lines[i + 3L])) {
+      journal <- clean_journal(lines[i + 2L])
+      authors <- split_authors(lines[i + 1L])
+      if (length(authors) || (!is.na(journal) && nzchar(journal))) {
+        rows[[length(rows) + 1L]] <- list(journal = ifelse(is.na(journal), "", journal), authors = authors)
+      }
+      i <- i + 4L
+    } else {
+      i <- i + 1L
+    }
+  }
+  if (length(rows) < 2L) return(data.frame())
+  max_authors <- max(1L, max(vapply(rows, function(z) length(z$authors), integer(1))))
+  out <- data.frame(Journal = vapply(rows, function(z) z$journal, character(1)), stringsAsFactors = FALSE, check.names = FALSE)
+  for (k in seq_len(max_authors)) {
+    out[[paste0("Author_", k)]] <- vapply(rows, function(z) if (length(z$authors) >= k) z$authors[k] else "", character(1))
+  }
+
+  out[is.na(out)] <- ""
+  out
+}
+
+# ---- Google Scholar article-citation parser + h-index/i10 summary ----
+# This fixes journal-only extraction when pasted Google Scholar rows are used.
+# It keeps the source/journal row as Journal and uses the citation/year row
+# to compute a Google-Scholar-like citation table.
+.ref_gs_parse_cite_year <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  z <- gsub("\t+", " ", z, perl = TRUE)
+  z <- gsub("[,，]", "", z, perl = TRUE)
+  z <- gsub("\\s+", " ", z, perl = TRUE)
+  z <- trimws(z)
+  m <- regexec("^(?:([0-9]+)\\s+)?((?:19|20)[0-9]{2})$", z, perl = TRUE)
+  r <- regmatches(z, m)[[1]]
+  if (length(r) >= 3) {
+    cites <- ifelse(nzchar(r[2]), suppressWarnings(as.integer(r[2])), 0L)
+    year  <- suppressWarnings(as.integer(r[3]))
+    if (!is.finite(cites)) cites <- 0L
+    if (!is.finite(year)) year <- NA_integer_
+    return(list(citations = cites, year = year))
+  }
+  NULL
+}
+
+.ref_gs_is_author_line_relaxed <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  if (!nzchar(z)) return(FALSE)
+  if (!is.null(.ref_gs_parse_cite_year(z))) return(FALSE)
+  if (grepl("^(Title|Authors|Publication|Journal|Source|Cited by|Year|All|Since|Sort by|Show more|顯示更多|匯出|Export)$", z, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+  if (grepl("https?://|doi|PMID|PMCID", z, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+  latin <- gregexpr("\\b[A-Z]{1,6}[[:space:]]+[A-Z][A-Za-z'\\-]+\\b", z, perl = TRUE)[[1]]
+  n_latin <- if (length(latin) == 1L && latin[1] == -1L) 0L else length(latin)
+  # Google Scholar bylines are usually comma-delimited; Chinese bylines may use 、/，/；.
+  has_delim <- grepl(",|，|、|；|;| and | & ", z, ignore.case = TRUE, perl = TRUE)
+  has_zh_name <- grepl("[\u4e00-\u9fff]{2,4}(?:[,，、；;]|$)", z, perl = TRUE)
+  n_latin >= 1L || has_zh_name || has_delim
+}
+
+.ref_google_scholar_articles <- function(txt) {
+  empty <- data.frame(
+    reference_no = integer(0), title = character(0), authors = character(0),
+    journal = character(0), citations = integer(0), year = integer(0),
+    source = character(0), normalized_record = logical(0), record_style = character(0),
+    stringsAsFactors = FALSE
+  )
+  txt <- enc2utf8(as.character(txt %||% ""))
+  txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+  lines <- trimws(unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- .ref_norm_spaces2(lines)
+  lines <- lines[nzchar(lines)]
+  if (length(lines) < 4L) return(empty)
+
+  bad <- grepl("^(Title|Authors|Publication|Journal|Source|Cited by|Year|All|Since|Sort by|Show more|顯示更多|匯出|Export|文章|引用次數|共同作者)$", lines,
+               ignore.case = TRUE, perl = TRUE)
+  lines <- lines[!bad]
+  if (length(lines) < 4L) return(empty)
+
+  rows <- list(); i <- 1L
+  while (i <= length(lines) - 3L) {
+    cy <- .ref_gs_parse_cite_year(lines[i + 3L])
+    if (.ref_gs_is_author_line_relaxed(lines[i + 1L]) && !is.null(cy)) {
+      title <- lines[i]
+      authors <- lines[i + 1L]
+      journal_line <- lines[i + 2L]
+      journal <- .ref_gs_clean_source_to_journal(journal_line)
+      bad_title <- .ref_ncku_pure_bad_title(title) || grepl("^(查看|新增|正在追蹤|個別顯示|讓同事|文章|引用次數|共同作者|標題|隱私權|服務條款|說明)$", title, perl = TRUE)
+      bad_source <- grepl("^(查看|新增|正在追蹤|文章|引用次數|共同作者|標題|隱私權|服務條款|說明)$", journal_line, perl = TRUE)
+      if (!bad_title && !bad_source && !is.na(journal) && nzchar(journal) && !.ref_title_like_journal_fragment(journal)) {
+        rows[[length(rows) + 1L]] <- data.frame(
+          reference_no = length(rows) + 1L,
+          title = title,
+          authors = authors,
+          journal = journal,
+          citations = as.integer(cy$citations),
+          year = as.integer(cy$year),
+          source = "Google Scholar",
+          normalized_record = TRUE,
+          record_style = "Google Scholar 4-line normalized record",
+          stringsAsFactors = FALSE
+        )
+      }
+      i <- i + 4L
+    } else {
+      i <- i + 1L
+    }
+  }
+  if (!length(rows)) return(empty)
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+.ref_google_scholar_articles_to_wide <- function(articles) {
+  if (is.null(articles) || !is.data.frame(articles) || !nrow(articles)) return(data.frame())
+  rows <- lapply(seq_len(nrow(articles)), function(i) {
+    authors <- .ref_gs_split_authors(articles$authors[i])
+    list(journal = as.character(articles$journal[i]), authors = authors)
+  })
+  max_authors <- max(1L, max(vapply(rows, function(z) length(z$authors), integer(1))))
+  out <- data.frame(Journal = vapply(rows, function(z) z$journal, character(1)), stringsAsFactors = FALSE, check.names = FALSE)
+  for (k in seq_len(max_authors)) {
+    out[[paste0("Author_", k)]] <- vapply(rows, function(z) if (length(z$authors) >= k) z$authors[k] else "", character(1))
+  }
+  out[is.na(out)] <- ""
+  out
+}
+
+.ref_gs_h_index <- function(citations) {
+  x <- suppressWarnings(as.integer(citations))
+  x <- sort(x[is.finite(x) & !is.na(x)], decreasing = TRUE)
+  if (!length(x)) return(0L)
+  ok <- which(x >= seq_along(x))
+  if (!length(ok)) 0L else max(ok)
+}
+
+
+# ---- Google Scholar profile-summary parser ----
+# Supports copied profile summary lines such as:
+#   全部   自 2021 年
+#   引文   3259   2396
+#   H 指數 30     25
+#   i10 指數 103  87
+# or English UI labels: All / Since 2021 / Citations / h-index / i10-index.
+.ref_google_scholar_profile_summary <- function(txt) {
+  empty <- data.frame(
+    Metric = character(0), All = integer(0), Since = integer(0),
+    Since_Year = integer(0), Source = character(0),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  txt <- enc2utf8(as.character(txt %||% ""))
+  txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+  lines <- trimws(unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- .ref_norm_spaces2(lines)
+  lines <- lines[nzchar(lines)]
+  if (!length(lines)) return(empty)
+
+  # Since year from header, if available.
+  sy <- NA_integer_
+  hdr <- lines[grepl("自[[:space:]]*(?:19|20)[0-9]{2}|Since[[:space:]]*(?:19|20)[0-9]{2}", lines, ignore.case = TRUE, perl = TRUE)]
+  if (length(hdr)) {
+    sy <- suppressWarnings(as.integer(sub("^.*?((?:19|20)[0-9]{2}).*$", "\\1", hdr[1], perl = TRUE)))
+    if (!is.finite(sy)) sy <- NA_integer_
+  }
+
+  pick_nums <- function(pattern) {
+    hit <- lines[grepl(pattern, lines, ignore.case = TRUE, perl = TRUE)]
+    if (!length(hit)) return(NULL)
+    # Prefer a line with at least one number and exclude article rows by using labels.
+    z <- hit[1]
+    nums <- regmatches(z, gregexpr("[0-9][0-9,]*", z, perl = TRUE))[[1]]
+    nums <- suppressWarnings(as.integer(gsub(",", "", nums, perl = TRUE)))
+    nums <- nums[is.finite(nums)]
+    if (!length(nums)) return(NULL)
+    # If the metric line itself contains a since-year, remove that year from metric values.
+    if (length(nums) >= 3 && any(nums %in% sy)) nums <- nums[!(nums %in% sy)]
+    nums
+  }
+
+  cit <- pick_nums("^(引文|Citations)")
+  hix <- pick_nums("^(H[[:space:]]*指數|h[ -]?index)")
+  i10 <- pick_nums("^(i10[[:space:]]*指數|i10[ -]?index)")
+  if (is.null(cit) && is.null(hix) && is.null(i10)) return(empty)
+
+  metric_row <- function(label, vals) {
+    if (is.null(vals) || !length(vals)) vals <- c(NA_integer_, NA_integer_)
+    data.frame(
+      Metric = label,
+      All = as.integer(vals[1] %||% NA_integer_),
+      Since = as.integer(vals[2] %||% NA_integer_),
+      Since_Year = as.integer(ifelse(is.finite(sy), sy, NA_integer_)),
+      Source = "Google Scholar profile summary",
+      stringsAsFactors = FALSE, check.names = FALSE
+    )
+  }
+  out <- rbind(
+    metric_row("Google Scholar profile citations", cit),
+    metric_row("Google Scholar profile h-index", hix),
+    metric_row("Google Scholar profile i10-index", i10)
+  )
+  out
+}
+
+# Build a clear combined h-index table: profile-reported metrics first (when present),
+# then metrics computed from normalized parsed reference rows.
+.ref_reference_hindex_table <- function(articles, profile_summary = NULL) {
+  rows <- list()
+  if (is.data.frame(profile_summary) && nrow(profile_summary)) {
+    ps <- profile_summary
+    # One row per profile metric, plus Since column when known.
+    for (i in seq_len(nrow(ps))) {
+      m <- as.character(ps$Metric[i])
+      rows[[length(rows)+1L]] <- data.frame(
+        Metric = m,
+        Value = as.character(ps$All[i]),
+        Source = "profile-reported",
+        stringsAsFactors = FALSE, check.names = FALSE
+      )
+      if ("Since" %in% names(ps) && is.finite(suppressWarnings(as.numeric(ps$Since[i])))) {
+        sy <- suppressWarnings(as.integer(ps$Since_Year[i])); sy_txt <- ifelse(is.finite(sy), paste0(" since ", sy), " since period")
+        rows[[length(rows)+1L]] <- data.frame(
+          Metric = paste0(m, sy_txt),
+          Value = as.character(ps$Since[i]),
+          Source = "profile-reported",
+          stringsAsFactors = FALSE, check.names = FALSE
+        )
+      }
+    }
+  }
+
+  if (is.null(articles) || !is.data.frame(articles) || !nrow(articles)) {
+    if (!length(rows)) {
+      return(data.frame(Metric = "Google Scholar/NCKU normalized article-citation rows", Value = "Not detected", Source = "parsed normalized references", stringsAsFactors = FALSE, check.names = FALSE))
+    }
+  } else {
+    cites <- suppressWarnings(as.integer(articles$citations))
+    cites[!is.finite(cites) | is.na(cites)] <- 0L
+    rows[[length(rows)+1L]] <- data.frame(Metric="Parsed normalized references", Value=as.character(length(cites)), Source="parsed normalized references", stringsAsFactors=FALSE, check.names=FALSE)
+    rows[[length(rows)+1L]] <- data.frame(Metric="Parsed normalized-reference citations", Value=as.character(sum(cites, na.rm=TRUE)), Source="parsed normalized references", stringsAsFactors=FALSE, check.names=FALSE)
+    rows[[length(rows)+1L]] <- data.frame(Metric="Parsed normalized-reference h-index", Value=as.character(.ref_gs_h_index(cites)), Source="parsed normalized references", stringsAsFactors=FALSE, check.names=FALSE)
+    rows[[length(rows)+1L]] <- data.frame(Metric="Parsed normalized-reference i10-index", Value=as.character(sum(cites >= 10L, na.rm=TRUE)), Source="parsed normalized references", stringsAsFactors=FALSE, check.names=FALSE)
+  }
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+.ref_reference_year_counts <- function(articles) {
+  if (is.null(articles) || !is.data.frame(articles) || !nrow(articles) || !("year" %in% names(articles))) {
+    return(data.frame(Year=integer(0), Articles=integer(0), Citations=integer(0), stringsAsFactors=FALSE))
+  }
+  yy <- suppressWarnings(as.integer(articles$year))
+  cc <- suppressWarnings(as.integer(articles$citations)); cc[!is.finite(cc) | is.na(cc)] <- 0L
+  ok <- is.finite(yy) & !is.na(yy)
+  if (!any(ok)) return(data.frame(Year=integer(0), Articles=integer(0), Citations=integer(0), stringsAsFactors=FALSE))
+  d <- data.frame(Year=yy[ok], Citations=cc[ok], stringsAsFactors=FALSE)
+  out <- aggregate(list(Articles=rep(1L, nrow(d)), Citations=d$Citations), by=list(Year=d$Year), FUN=sum)
+  out <- out[order(out$Year), , drop=FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+.ref_plot_reference_year_bar <- function(articles, main = "Parsed references by publication year") {
+  yc <- .ref_reference_year_counts(articles)
+  if (!is.data.frame(yc) || !nrow(yc)) {
+    plot.new(); text(0.5, 0.5, "No normalized parsed reference years available."); return(invisible(NULL))
+  }
+  op <- par(mar = c(5, 5, 4, 2)); on.exit(par(op), add = TRUE)
+  barplot(height = yc$Articles, names.arg = yc$Year, las = 2,
+          xlab = "Publication year", ylab = "Number of normalized references",
+          main = main)
+  invisible(yc)
+}
+
+.ref_google_scholar_metrics <- function(articles, since_year = NULL) {
+  if (is.null(since_year) || !is.finite(since_year)) since_year <- as.integer(format(Sys.Date(), "%Y")) - 5L
+  if (is.null(articles) || !is.data.frame(articles) || !nrow(articles)) {
+    return(data.frame(metric = "Google Scholar/NCKU article-citation rows", All = "Not detected", check.names = FALSE))
+  }
+  cites <- suppressWarnings(as.integer(articles$citations)); cites[!is.finite(cites) | is.na(cites)] <- 0L
+  yrs <- suppressWarnings(as.integer(articles$year))
+  keep_since <- is.finite(yrs) & !is.na(yrs) & yrs >= since_year
+  cites_since <- cites[keep_since]
+  out <- data.frame(
+    metric = c("Citations", "h-index", "i10-index"),
+    All = c(sum(cites), .ref_gs_h_index(cites), sum(cites >= 10L)),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  out[[paste0("Since ", since_year, "*")]] <- c(sum(cites_since), .ref_gs_h_index(cites_since), sum(cites_since >= 10L))
+  out
+}
+
+
+# ---- All-reference Google Scholar/NCKU h-index summary ----
+# This is article/reference-level only: each parsed reference contributes its
+# own citation count once. It is independent of the first/last-author and
+# all-author h-index tables.
+.ref_google_scholar_all_reference_hindex <- function(articles, profile_summary = NULL) {
+  .ref_reference_hindex_table(articles, profile_summary = profile_summary)
+}
+
+
+# ---- Google Scholar author-based h-index tables ----
+# basis = "first_last": each article contributes only its first and last byline authors.
+# basis = "all": each article contributes every cleaned byline author.
+.ref_google_scholar_author_hindex <- function(articles, basis = c("first_last", "all"), since_year = NULL) {
+  basis <- match.arg(basis)
+  if (is.null(since_year) || !is.finite(since_year)) since_year <- as.integer(format(Sys.Date(), "%Y")) - 5L
+  empty <- data.frame(
+    author = character(0), papers = integer(0), citations = integer(0),
+    h_index = integer(0), i10_index = integer(0),
+    first_author_papers = integer(0), last_author_papers = integer(0),
+    since_year = integer(0), papers_since = integer(0), citations_since = integer(0),
+    h_index_since = integer(0), i10_index_since = integer(0),
+    basis = character(0), stringsAsFactors = FALSE, check.names = FALSE
+  )
+  if (is.null(articles) || !is.data.frame(articles) || !nrow(articles)) return(empty)
+
+  rows <- list()
+  for (i in seq_len(nrow(articles))) {
+    aa <- .ref_gs_split_authors(articles$authors[i] %||% "")
+    aa <- aa[!is.na(aa) & nzchar(aa)]
+    aa <- unique(aa)
+    if (!length(aa)) next
+
+    first_a <- aa[1]
+    last_a  <- aa[length(aa)]
+    use_a <- if (basis == "first_last") unique(c(first_a, last_a)) else aa
+    cites <- suppressWarnings(as.integer(articles$citations[i])); if (!is.finite(cites) || is.na(cites)) cites <- 0L
+    yr <- suppressWarnings(as.integer(articles$year[i])); if (!is.finite(yr) || is.na(yr)) yr <- NA_integer_
+    refno <- suppressWarnings(as.integer(articles$reference_no[i])); if (!is.finite(refno) || is.na(refno)) refno <- i
+
+    for (au in use_a) {
+      rows[[length(rows) + 1L]] <- data.frame(
+        author = au, reference_no = refno, citations = cites, year = yr,
+        first_author = identical(au, first_a), last_author = identical(au, last_a),
+        stringsAsFactors = FALSE, check.names = FALSE
+      )
+    }
+  }
+  if (!length(rows)) return(empty)
+  long <- do.call(rbind, rows)
+  long <- long[!duplicated(long[, c("author", "reference_no")]), , drop = FALSE]
+
+  split_by_author <- split(long, long$author)
+  out <- lapply(split_by_author, function(d) {
+    cites <- suppressWarnings(as.integer(d$citations)); cites[!is.finite(cites) | is.na(cites)] <- 0L
+    yrs <- suppressWarnings(as.integer(d$year))
+    keep_since <- is.finite(yrs) & !is.na(yrs) & yrs >= since_year
+    cites_since <- cites[keep_since]
+    data.frame(
+      author = as.character(d$author[1]),
+      papers = length(unique(d$reference_no)),
+      citations = sum(cites, na.rm = TRUE),
+      h_index = .ref_gs_h_index(cites),
+      i10_index = sum(cites >= 10L, na.rm = TRUE),
+      first_author_papers = sum(isTRUE(d$first_author) | d$first_author, na.rm = TRUE),
+      last_author_papers = sum(isTRUE(d$last_author) | d$last_author, na.rm = TRUE),
+      since_year = since_year,
+      papers_since = sum(keep_since, na.rm = TRUE),
+      citations_since = sum(cites_since, na.rm = TRUE),
+      h_index_since = .ref_gs_h_index(cites_since),
+      i10_index_since = sum(cites_since >= 10L, na.rm = TRUE),
+      basis = ifelse(basis == "first_last", "1st/last authors only", "all byline authors"),
+      stringsAsFactors = FALSE, check.names = FALSE
+    )
+  })
+  out <- do.call(rbind, out)
+  out <- out[order(-out$h_index, -out$citations, -out$papers, out$author), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+
+
+# ---- NCKU Pure / researchoutput.ncku.edu.tw Scopus pasted-row parser ----
+# Supports rows copied from the NCKU Research Output / Pure page, for example:
+#   Title
+#   Lee, H. F., Chiang, H. Y. & Kuo, H. T., 2019 1月, 於: Journal of Nursing Management. 27, 1, p. 52-65
+#   研究成果: Article › 同行評審
+#   ...
+#   121
+#     連結會在新分頁中打開
+#   引文
+#   斯高帕斯（Scopus）
+# A copied normalized row may also provide only a numeric citation count after
+# each record; that count is used for h-index computation when unambiguous.
+# The output intentionally matches .ref_google_scholar_articles(), so the same
+# h-index, i10-index, journal-frequency, first/last-author, and all-author
+# reports can be reused without changing downstream plotting code.
+.ref_ncku_pure_empty_articles <- function() {
+  data.frame(
+    reference_no = integer(0), title = character(0), authors = character(0),
+    journal = character(0), citations = integer(0), year = integer(0),
+    source = character(0), normalized_record = logical(0), record_style = character(0),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+}
+
+.ref_ncku_pure_initial_token <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  if (!nzchar(z)) return(FALSE)
+  zz <- gsub("[^A-Za-z]", "", z, perl = TRUE)
+  nzchar(zz) && nchar(zz) <= 8L && grepl("^[A-Z]+$", zz, perl = TRUE)
+}
+
+.ref_ncku_pure_author_one <- function(surname, initials = "") {
+  s <- .ref_norm_spaces2(surname)
+  s <- gsub("\\([^)]*(Editor|編輯)[^)]*\\)", "", s, ignore.case = TRUE, perl = TRUE)
+  # Prefer English transliteration inside parentheses when available.
+  m <- regexec("\\(([A-Za-z][A-Za-z .'-]+)\\)", s, perl = TRUE)
+  r <- regmatches(s, m)[[1]]
+  if (length(r) >= 2L && nzchar(r[2])) s <- r[2]
+  s <- gsub("^[[:punct:] ]+|[[:punct:] ]+$", "", s, perl = TRUE)
+  s <- .ref_norm_spaces2(s)
+  if (!nzchar(s)) return(NA_character_)
+
+  ii <- toupper(gsub("[^A-Za-z]", "", .ref_norm_spaces2(initials), perl = TRUE))
+  if (nzchar(ii) && grepl("^[A-Za-z][A-Za-z' -]+$", s, perl = TRUE)) {
+    return(.ref_clean_author_strict(paste(ii, s)))
+  }
+
+  # Already-initialized forms such as "Lee H. F." or "HF Lee".
+  m2 <- regexec("^([A-Z][A-Za-z'\\-]+)\\s+((?:[A-Z]\\.?[- ]*){1,6})$", s, perl = TRUE)
+  r2 <- regmatches(s, m2)[[1]]
+  if (length(r2) >= 3L) {
+    ii2 <- toupper(gsub("[^A-Za-z]", "", r2[3], perl = TRUE))
+    return(.ref_clean_author_strict(paste(ii2, r2[2])))
+  }
+
+  .ref_clean_author_strict(s)
+}
+
+.ref_ncku_pure_split_authors <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  if (!nzchar(z)) return(character(0))
+  z <- gsub("\\bet\\s+al\\.?", "", z, ignore.case = TRUE, perl = TRUE)
+  z <- gsub("\\s+(&|and)\\s+", ", ", z, ignore.case = TRUE, perl = TRUE)
+  z <- gsub("[；;、]", ",", z, perl = TRUE)
+  toks <- trimws(unlist(strsplit(z, "\\s*,\\s*", perl = TRUE), use.names = FALSE))
+  toks <- toks[nzchar(toks)]
+  if (!length(toks)) return(character(0))
+
+  out <- character(0)
+  i <- 1L
+  while (i <= length(toks)) {
+    if (i < length(toks) && .ref_ncku_pure_initial_token(toks[i + 1L])) {
+      out <- c(out, .ref_ncku_pure_author_one(toks[i], toks[i + 1L]))
+      i <- i + 2L
+    } else {
+      out <- c(out, .ref_ncku_pure_author_one(toks[i], ""))
+      i <- i + 1L
+    }
+  }
+  out <- unique(out[!is.na(out) & nzchar(out)])
+  out
+}
+
+.ref_ncku_pure_journal_from_source <- function(src) {
+  z <- .ref_norm_spaces2(src)
+  if (!grepl("於\\s*:", z, perl = TRUE)) return(NA_character_)
+  j <- sub("^.*?於\\s*:\\s*", "", z, perl = TRUE)
+  # Remove volume/issue/page/article-number suffix after the journal title.
+  j <- sub("\\.\\s*(?:[0-9]+|p\\.|e[0-9]|[0-9]{4}|[A-Za-z]*[[:space:]]*[0-9]|\\(Accepted|卷|頁).*$", "", j, ignore.case = TRUE, perl = TRUE)
+  j <- sub("[[:space:]]+(?:[0-9]+|p\\.|e[0-9]).*$", "", j, ignore.case = TRUE, perl = TRUE)
+  j <- .ref_clean_journal_strict(j)
+  if (length(j) && !is.na(j) && nzchar(j)) as.character(j) else NA_character_
+}
+
+.ref_ncku_pure_parse_source_line <- function(src) {
+  z <- .ref_norm_spaces2(src)
+  y <- suppressWarnings(as.integer(sub("^.*?((?:19|20)[0-9]{2}).*$", "\\1", z, perl = TRUE)))
+  if (!is.finite(y)) y <- NA_integer_
+  byline <- sub("\\s*,?\\s*(?:19|20)[0-9]{2}.*$", "", z, perl = TRUE)
+  journal <- .ref_ncku_pure_journal_from_source(z)
+  list(authors = .ref_ncku_pure_split_authors(byline), journal = journal, year = y)
+}
+
+.ref_ncku_pure_bad_title <- function(x) {
+  z <- .ref_norm_spaces2(x)
+  !nzchar(z) ||
+    grepl("^(搜尋結果|國立成功大學|在 國立成功大學|首頁|概要|研究單位|研究成果|專案|學生論文|設備|獎項|活動|更多|概覽|指紋|網路|開啟存取|引文|斯高帕斯|技術支援|網站使用|登入 Pure|關於無障礙|通報網頁|聯繫我們)$", z, perl = TRUE) ||
+    grepl("^(Article|Conference contribution|Chapter|Review article|Book)$", z, ignore.case = TRUE, perl = TRUE) ||
+    grepl("^(?:19|20)[0-9]{2}$", z, perl = TRUE) ||
+    grepl("^[0-9]+%$", z, perl = TRUE) ||
+    grepl("^Article has an altmetric score", z, ignore.case = TRUE, perl = TRUE) ||
+    grepl("連結會在新分頁中打開", z, perl = TRUE) ||
+    grepl("^研究成果:", z, perl = TRUE) ||
+    grepl("^貢獻的翻譯標題", z, perl = TRUE)
+}
+
+.ref_ncku_pure_extract_citations <- function(lines, scan_rng) {
+  # NCKU/Pure pages may place the Scopus citation count after each record as:
+  #   121 / 引文 / 斯高帕斯（Scopus）
+  # or as a compact line such as "Cited by 121" / "121 citations".
+  # Use explicit labels first; if no label is present, use a single numeric-only
+  # line after the source row as the record-level citation count.  This allows
+  # the parsed reference citations to support all-reference and first/last-author
+  # h-index computations.
+  if (!length(scan_rng)) return(0L)
+  ln <- .ref_norm_spaces2(lines[scan_rng])
+  ln[is.na(ln)] <- ""
+  local_num <- function(x) {
+    x <- gsub("[,，]", "", .ref_norm_spaces2(x), perl = TRUE)
+    z <- regmatches(x, regexpr("[0-9][0-9]*", x, perl = TRUE))
+    if (!length(z) || is.na(z) || !nzchar(z)) return(NA_integer_)
+    suppressWarnings(as.integer(z))
+  }
+
+  # Same-line labelled forms.
+  lab_pat <- "(引文|斯高帕斯|Scopus|Cited by|Citations|Citation count|被引用|引用)"
+  lab_idx <- which(grepl(lab_pat, ln, ignore.case = TRUE, perl = TRUE) & grepl("[0-9]", ln, perl = TRUE))
+  if (length(lab_idx)) {
+    val <- local_num(ln[lab_idx[1]])
+    if (is.finite(val) && !is.na(val)) return(as.integer(val))
+  }
+
+  # Numeric-only line near labelled lines, e.g. 121 / link-open text / 引文 / Scopus.
+  num_idx <- which(grepl("^[0-9][0-9,]*$", ln, perl = TRUE))
+  if (length(num_idx)) {
+    for (ii in num_idx) {
+      lo <- max(1L, ii - 3L)
+      hi <- min(length(ln), ii + 8L)
+      look <- ln[seq.int(lo, hi)]
+      if (any(grepl(lab_pat, look, ignore.case = TRUE, perl = TRUE))) {
+        val <- local_num(ln[ii])
+        if (is.finite(val) && !is.na(val)) return(as.integer(val))
+      }
+    }
+  }
+
+  # Fallback: copied normalized records sometimes have exactly one number after
+  # each reference but omit the visible label.  Treat that number as citations.
+  # Avoid years, percentages, and page-like long fragments.
+  if (length(num_idx) == 1L) {
+    val <- local_num(ln[num_idx[1]])
+    if (is.finite(val) && !is.na(val) && val >= 0L) return(as.integer(val))
+  }
+  0L
+}
+
+.ref_ncku_pure_articles <- function(txt) {
+  empty <- .ref_ncku_pure_empty_articles()
+  txt <- enc2utf8(as.character(txt %||% ""))
+  txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+  if (!grepl("研究成果:|斯高帕斯|Scopus|Pure|researchoutput\\.ncku|於\\s*:", txt, ignore.case = TRUE, perl = TRUE)) return(empty)
+
+  lines <- trimws(unlist(strsplit(txt, "\n", fixed = TRUE), use.names = FALSE))
+  lines <- .ref_norm_spaces2(lines)
+  lines <- lines[nzchar(lines)]
+  if (length(lines) < 3L) return(empty)
+
+  # Flexible normalized-record detector.  NCKU/Pure copied rows may keep
+  # "authors + year + 於: journal" on one line, or may split the author/year
+  # part and the "於: journal" part across adjacent lines.  Keep the first
+  # line index so the title can still be found immediately above it.
+  src_rows <- list()
+  for (ii in seq_along(lines)) {
+    cand <- c(lines[ii])
+    if (ii + 1L <= length(lines)) cand <- c(cand, paste(lines[ii], lines[ii + 1L]))
+    if (ii + 2L <= length(lines)) cand <- c(cand, paste(lines[ii], lines[ii + 1L], lines[ii + 2L]))
+    hit <- cand[grepl("(?:19|20)[0-9]{2}.*於\\s*:", cand, perl = TRUE)]
+    if (length(hit)) {
+      src_rows[[length(src_rows) + 1L]] <- data.frame(si = ii, src = hit[1], stringsAsFactors = FALSE)
+    }
+  }
+  if (!length(src_rows)) return(empty)
+  src_df <- do.call(rbind, src_rows)
+  src_df <- src_df[!duplicated(paste(src_df$si, src_df$src, sep = "\r")), , drop = FALSE]
+
+  rows <- list()
+  for (jj in seq_len(nrow(src_df))) {
+    si <- src_df$si[jj]
+    src <- src_df$src[jj]
+    meta <- .ref_ncku_pure_parse_source_line(src)
+    if (is.na(meta$journal) || !nzchar(meta$journal) || !length(meta$authors)) next
+
+    # Prefer the closest previous valid line as the title.  This is more robust
+    # than requiring si - 1, because Pure pages sometimes insert translated-title
+    # or open-access/status rows between title and source metadata.
+    title <- NA_character_
+    prev_rng <- if (si > 1L) rev(seq.int(max(1L, si - 6L), si - 1L)) else integer(0)
+    for (ti in prev_rng) {
+      if (!.ref_ncku_pure_bad_title(lines[ti]) &&
+          !grepl("(?:19|20)[0-9]{2}.*於\\s*:", lines[ti], perl = TRUE)) {
+        title <- lines[ti]
+        break
+      }
+    }
+    if (is.na(title) || !nzchar(title)) next
+
+    # A research-output type line strengthens confidence, but should not be
+    # mandatory for normalized copied Scopus/Pure rows.  Citation extraction is
+    # bounded by the next source line to avoid leaking counts from the next item.
+    next_si <- if (jj < nrow(src_df)) src_df$si[jj + 1L] else (length(lines) + 1L)
+    scan_to <- max(si + 1L, next_si - 1L)
+    scan_rng <- if (si + 1L <= scan_to) seq.int(si + 1L, scan_to) else integer(0)
+    cites <- .ref_ncku_pure_extract_citations(lines, scan_rng)
+
+    rows[[length(rows) + 1L]] <- data.frame(
+      reference_no = length(rows) + 1L,
+      title = title,
+      authors = paste(meta$authors, collapse = ", "),
+      journal = as.character(meta$journal),
+      citations = as.integer(cites),
+      year = as.integer(meta$year),
+      source = "NCKU Pure / Scopus",
+      normalized_record = TRUE,
+      record_style = "NCKU Pure/Scopus normalized record",
+      stringsAsFactors = FALSE, check.names = FALSE
+    )
+  }
+  if (!length(rows)) return(empty)
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+.ref_reference_citation_articles <- function(txt, sources = c("ama", "google", "scopus")) {
+  txt0 <- enc2utf8(as.character(txt %||% ""))
+  sources <- unique(tolower(as.character(sources %||% c("ama", "google", "scopus"))))
+  if (!length(sources)) sources <- c("ama", "google", "scopus")
+  use_google <- any(sources %in% c("google", "gs", "scholar", "google_scholar"))
+  use_scopus <- any(sources %in% c("scopus", "ncku", "pure", "ncku_scopus"))
+
+  rows <- list()
+  if (isTRUE(use_scopus)) {
+    nk <- tryCatch(.ref_ncku_pure_articles(txt0), error = function(e) data.frame())
+    if (is.data.frame(nk) && nrow(nk) > 0) rows[[length(rows) + 1L]] <- nk
+  }
+  if (isTRUE(use_google)) {
+    gs <- tryCatch(.ref_google_scholar_articles(txt0), error = function(e) data.frame())
+    if (is.data.frame(gs) && nrow(gs) > 0) {
+      if (!"source" %in% names(gs)) gs$source <- "Google Scholar"
+      rows[[length(rows) + 1L]] <- gs
+    }
+  }
+  if (!length(rows)) return(.ref_ncku_pure_empty_articles())
+
+  out <- do.call(rbind, rows)
+  # De-duplicate only exact normalized records. This prevents copied page headers
+  # or repeated pages from inflating citations/h-index.
+  key <- paste(tolower(.ref_norm_spaces2(out$title)),
+               tolower(.ref_norm_spaces2(out$authors)),
+               suppressWarnings(as.integer(out$year)),
+               sep = "\r")
+  out <- out[!duplicated(key), , drop = FALSE]
+  out$reference_no <- seq_len(nrow(out))
+  rownames(out) <- NULL
+  out
+}
+
+.ref_empty_author_hindex_message <- function() {
+  data.frame(Message = "No Google Scholar/NCKU author-citation rows detected. Paste Google Scholar rows or NCKU Pure/Scopus rows with authors, journal/source, citations, and year.", stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+.ref_to_wide_from_text_strict <- function(txt) {
+  blocks <- .ref_split_pubmed_blocks_strict(txt)
+  if (!length(blocks)) stop("No usable PubMed/AMA/Google Scholar/NCKU Scopus entries were detected.", call. = FALSE)
+  parsed <- lapply(blocks, .ref_parse_block_strict)
+  journals <- vapply(parsed, function(z) as.character(z$journal %||% ""), character(1))
+  authors_list <- lapply(parsed, function(z) unique(na.omit(as.character(z$authors %||% character(0)))))
+  keep <- nzchar(journals) | lengths(authors_list) > 0
+  journals <- journals[keep]
+  authors_list <- authors_list[keep]
+  if (!length(journals)) stop("No usable journal/author terms after parsing.", call. = FALSE)
+
+  max_authors <- max(1L, max(lengths(authors_list), na.rm = TRUE))
+  out <- data.frame(Journal = journals, stringsAsFactors = FALSE, check.names = FALSE)
+  for (k in seq_len(max_authors)) {
+    out[[paste0("Author_", k)]] <- vapply(authors_list, function(v) if (length(v) >= k) v[k] else "", character(1))
+  }
+  out[is.na(out)] <- ""
+  out
+}
+
+.ref_valid_node <- function(x) {
+  x <- .ref_norm_spaces2(x)
+  if (!nzchar(x)) return(FALSE)
+  if (.ref_is_doi_fragment(x) || .ref_is_access_fragment(x) || .ref_title_like_journal_fragment(x)) return(FALSE)
+  if (grepl("\\[doi\\]|\\b(PST|SO|AID|PMID|PMCID)\\s*-", x, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+  if (grepl("^(P|S|N)$", x, perl = TRUE)) return(FALSE)
+  if (grepl("^[0-9]", x, perl = TRUE)) return(FALSE)
+  if (grepl("case fatality|observational study|usability study|meta-analysis", x, ignore.case = TRUE, perl = TRUE)) return(FALSE)
+  TRUE
+}
+
+
+
+# ============================================================
+# SAFE Slope Combo Entity helpers
+# Avoid htmltools::HTML()/renderUI() to prevent:
+# "不是所有的 is.character(txt) 都是 TRUE"
+# ============================================================
+
+.slope_safe_chr <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- iconv(x, from = "", to = "UTF-8", sub = "")
+  x[is.na(x)] <- ""
+  trimws(x)
+}
+
+.slope_pick_year_col <- function(df) {
+  nms <- names(df)
+  cand <- c("Year", "year", "PY", "Publication Year", "Publication.Year", "publication_year")
+  hit <- cand[cand %in% nms]
+  if (length(hit)) return(hit[1])
+  hit <- nms[grepl("year|publication.*year", tolower(nms))]
+  if (length(hit)) hit[1] else NA_character_
+}
+
+.slope_pick_entity_col <- function(df, domain) {
+  nms <- names(df)
+  domain <- as.character(domain %||% "")
+  map <- list(
+    Country = c("Country","country","FAcountry","CAcountry"),
+    Institute = c("Institute","institute","FAinstitute","CAinstitute"),
+    Department = c("Department","department","FADept","CAdept"),
+    Author = c("Author","author","FAauthor","CAauthor"),
+    Journal = c("Journal","journal","SO","Source Title","Source.Title"),
+    Keyword = c("Keyword","keyword","KeywordsPlus","Keywords Plus","DE","ID"),
+    Region = c("Region","region","FAregion","CAregion"),
+    `State/Province` = c("Region","region","FAregion","CAregion"),
+    DocumentType = c("DocumentType","Document Type","DT","document_type"),
+    Year = c("Year","year")
+  )
+  cand <- map[[domain]]
+  if (is.null(cand)) cand <- c(domain, tolower(domain))
+  hit <- cand[cand %in% nms]
+  if (length(hit)) return(hit[1])
+  hit <- nms[tolower(nms) %in% tolower(cand)]
+  if (length(hit)) hit[1] else NA_character_
+}
+
+.slope_split_items <- function(x) {
+  x <- .slope_safe_chr(x)
+  x <- unlist(strsplit(x, "\\s*;\\s*|\\s*\\|\\s*", perl = TRUE), use.names = FALSE)
+  x <- .slope_safe_chr(x)
+  x[nzchar(x)]
+}
+
+.slope_get_meta_df <- function(rv = NULL) {
+  # Try common reactiveValues names used in app_709/app_708 without failing.
+  cand <- list()
+  if (!is.null(rv)) {
+    for (nm in c("metatable","meta","meta_df","pubmeta","woslong32","long32","woswide32","wide32")) {
+      val <- tryCatch(rv[[nm]], error=function(e) NULL)
+      if (is.data.frame(val) && nrow(val)) cand[[length(cand)+1]] <- val
+    }
+  }
+  if (length(cand)) return(cand[[1]])
+  NULL
+}
+
+.slope_build_combo_entity_year <- function(df, domain = "Author", top_n = 10, recent_n_years = 10) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(data.frame())
+  ycol <- .slope_pick_year_col(df)
+  ecol <- .slope_pick_entity_col(df, domain)
+  if (is.na(ycol) || is.na(ecol) || !(ycol %in% names(df)) || !(ecol %in% names(df))) return(data.frame())
+
+  yy <- suppressWarnings(as.integer(as.character(df[[ycol]])))
+  ok <- is.finite(yy)
+  df <- df[ok, , drop = FALSE]
+  yy <- yy[ok]
+  if (!length(yy)) return(data.frame())
+
+  ymax <- max(yy, na.rm = TRUE)
+  ymin <- ymax - as.integer(recent_n_years) + 1L
+  keep <- yy >= ymin & yy <= ymax
+  df <- df[keep, , drop = FALSE]
+  yy <- yy[keep]
+  if (!nrow(df)) return(data.frame())
+
+  rows <- lapply(seq_len(nrow(df)), function(i) {
+    items <- .slope_split_items(df[[ecol]][i])
+    if (!length(items)) return(NULL)
+    data.frame(Year = yy[i], Entity = items, stringsAsFactors = FALSE)
+  })
+  rows <- do.call(rbind, rows)
+  if (is.null(rows) || !nrow(rows)) return(data.frame())
+
+  rows <- unique(rows)
+  top <- as.data.frame(sort(table(rows$Entity), decreasing = TRUE), stringsAsFactors = FALSE)
+  names(top) <- c("Entity","Total")
+  top <- top[seq_len(min(top_n, nrow(top))), , drop = FALSE]
+  rows <- rows[rows$Entity %in% top$Entity, , drop = FALSE]
+
+  out <- as.data.frame(table(rows$Year, rows$Entity), stringsAsFactors = FALSE)
+  names(out) <- c("Year","Entity","Count")
+  out$Year <- suppressWarnings(as.integer(as.character(out$Year)))
+  out$Count <- suppressWarnings(as.numeric(out$Count))
+  out <- out[out$Entity %in% top$Entity, , drop = FALSE]
+  out <- merge(out, top, by = "Entity", all.x = TRUE)
+  out <- out[order(out$Entity, out$Year), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+.slope_plot_combo_entity_top10 <- function(dat, domain = "Entity") {
+  if (is.null(dat) || !is.data.frame(dat) || !nrow(dat)) {
+    plot.new()
+    text(0.5, 0.5, "No slope data available.\nRun analysis first or choose another entity/domain.", cex = 1.1)
+    return(invisible(NULL))
+  }
+  yrs <- sort(unique(dat$Year))
+  ents <- unique(dat$Entity[order(-dat$Total, dat$Entity)])
+  ymax <- max(dat$Count, na.rm = TRUE)
+  plot(range(yrs), c(0, ymax * 1.15), type = "n",
+       xlab = "Year", ylab = "Number of papers",
+       main = paste0("Top 10 ", domain, " slope graph over years"))
+  for (e in ents) {
+    d <- dat[dat$Entity == e, , drop = FALSE]
+    d <- d[order(d$Year), , drop = FALSE]
+    lines(d$Year, d$Count, lwd = 2)
+    points(d$Year, d$Count, pch = 19)
+    if (nrow(d)) {
+      text(d$Year[nrow(d)], d$Count[nrow(d)], labels = e, pos = 4, cex = 0.75, xpd = NA)
+    }
+  }
+}
+
 server <- function(input, output, session) {
+
+  output$slope_combo_entity_note <- renderText({
+    "Shows the yearly slope graph for the Top 10 selected entity elements. Run analysis first, then choose a domain/entity."
+  })
+
+  output$slope_combo_entity_plot <- renderPlot({
+    domain <- input$slope_combo_entity_domain %||% input$combo_domain %||% input$domain %||% "Author"
+    recent_n <- input$slope_combo_recent_years %||% 10
+    df <- .slope_get_meta_df(rv)
+    dat <- .slope_build_combo_entity_year(df, domain = domain, top_n = 10, recent_n_years = recent_n)
+    .slope_plot_combo_entity_top10(dat, domain = domain)
+  })
+
+  output$slope_combo_entity_table <- DT::renderDT({
+    domain <- input$slope_combo_entity_domain %||% input$combo_domain %||% input$domain %||% "Author"
+    recent_n <- input$slope_combo_recent_years %||% 10
+    df <- .slope_get_meta_df(rv)
+    dat <- .slope_build_combo_entity_year(df, domain = domain, top_n = 10, recent_n_years = recent_n)
+    DT::datatable(dat, rownames = FALSE, options = list(pageLength = 20, scrollX = TRUE))
+  })
+
+
   aac_server("aac")
   free_demo_run <- reactiveVal(TRUE)
   demo_term <- "asthma[Title/Abstract]"   # Demo 預設查詢（可改）
+
+  ama_processing_status <- reactiveVal("Ready: upload a PubMed/AMA TXT file or paste normalized Google Scholar/NCKU Scopus rows, then click Run journal extraction.")
+
+  output$ama_processing_status <- renderText({
+    as.character(ama_processing_status() %||% "")
+  })
+
+  observeEvent(input$btn_clear_ama_refs_text, {
+    updateTextAreaInput(session, "ama_refs_text", value = "")
+    ama_processing_status("Textarea cleared. Uploaded TXT and PubMed query were not changed.")
+    if (exists("ama_ref_status", inherits = FALSE) && is.function(ama_ref_status)) {
+      ama_ref_status("Textarea cleared. Uploaded TXT and PubMed query were not changed.")
+    }
+    if (exists("ama_author_aac_status", inherits = FALSE) && is.function(ama_author_aac_status)) {
+      ama_author_aac_status("Textarea cleared. Paste normalized records, then click Run AMA author AAC (1st+Last only).")
+    }
+    showNotification("Pasted-reference textarea cleared.", type = "message")
+  }, ignoreInit = TRUE)
+
+  # Store AMA results immediately when the button is clicked.
+  # Do NOT use eventReactive here, because hidden/suspended outputs may prevent
+  # the extraction from running until the user opens a result tab.
+  ama_journal_results_val <- reactiveVal(NULL)
+
+  # ---- Console logger for AMA extraction buttons ----
+  .ama_console_log <- function(step, ..., .button = "AMA") {
+    msg <- paste0(..., collapse = "")
+    message(sprintf("[%s] [%s] %s%s",
+                    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+                    .button,
+                    step,
+                    if (nzchar(msg)) paste0(": ", msg) else ""))
+    invisible(NULL)
+  }
+
+  .get_ama_input_text <- function(status_fun = ama_processing_status) {
+    # If checked, use pasted textarea references instead of uploaded TXT.
+    if (isTRUE(input$use_ama_textarea)) {
+      txt_area <- paste(input$ama_refs_text %||% "", collapse = "
+")
+      txt_area <- enc2utf8(as.character(txt_area))
+      txt_area <- gsub("\r\n|\r", "\n", txt_area, perl = TRUE)
+      if (!nzchar(trimws(txt_area))) {
+        status_fun("Error: textarea option is checked, but no AMA/PubMed references were pasted.")
+        showNotification("Textarea option is checked, but the textarea is empty.", type = "error")
+        return(NULL)
+      }
+      return(txt_area)
+    }
+
+    path <- NULL
+    if (!is.null(input$pubmed_txt) && !is.null(input$pubmed_txt$datapath) && file.exists(input$pubmed_txt$datapath)) {
+      path <- input$pubmed_txt$datapath
+    } else if (!is.null(rv$uploaded_perm_path) && file.exists(rv$uploaded_perm_path)) {
+      path <- rv$uploaded_perm_path
+    } else if (exists("PERM_PUBMED_TXT", inherits = TRUE) && file.exists(PERM_PUBMED_TXT)) {
+      path <- PERM_PUBMED_TXT
+    }
+
+    if (is.null(path) || !file.exists(path)) {
+      status_fun("Error: please upload a PubMed/AMA .txt file first, or check the textarea option and paste references.")
+      showNotification("Please upload a TXT file or use the textarea option.", type = "error")
+      return(NULL)
+    }
+    .read_text_any_encoding(path)
+  }
+
+  .ama_selected_ref_sources <- function() {
+    src <- character(0)
+    if (isTRUE(input$ref_src_ama))    src <- c(src, "ama")
+    if (isTRUE(input$ref_src_google)) src <- c(src, "google")
+    if (isTRUE(input$ref_src_scopus)) src <- c(src, "scopus")
+    if (!length(src)) {
+      showNotification("No reference source parser was selected; all three parsers will be used.", type = "warning")
+      src <- c("ama", "google", "scopus")
+    }
+    unique(src)
+  }
+
+  .ama_split_refs_selected <- function(txt, sources) {
+    art <- tryCatch(.ref_reference_citation_articles(txt, sources = sources), error = function(e) data.frame())
+    if (is.data.frame(art) && nrow(art) > 0) {
+      return(paste(art$title, art$authors, art$journal, art$year, sep = "\n"))
+    }
+    if ("ama" %in% sources) return(.ref_split_pubmed_blocks_strict(txt))
+    character(0)
+  }
+
+  .ama_parse_articles_selected <- function(txt, sources) {
+    tryCatch(.ref_reference_citation_articles(txt, sources = sources), error = function(e) data.frame())
+  }
+
+  observeEvent(input$run_ama_journals, {
+    .ama_console_log("Button pressed", "Run AMA journal extraction", .button = "AMA Journal")
+    ama_processing_status("Processing: checking uploaded TXT file...")
+    ama_journal_results_val(NULL)
+    .ama_console_log("Status", "cleared previous journal results", .button = "AMA Journal")
+
+    tryCatch({
+      shiny::withProgress(message = "Running AMA journal extraction", value = 0, {
+        shiny::incProgress(0.10, detail = "Checking input source")
+        .ama_console_log("Input", if (isTRUE(input$use_ama_textarea)) "using pasted textarea" else "using uploaded/permanent TXT file", .button = "AMA Journal")
+        ama_processing_status(if (isTRUE(input$use_ama_textarea)) "Processing: reading pasted textarea references..." else "Processing: reading uploaded TXT file...")
+
+        txt <- .get_ama_input_text(ama_processing_status)
+        if (is.null(txt) || !nzchar(trimws(txt))) stop("No uploaded or pasted AMA/PubMed/Google Scholar/NCKU Scopus text was found.", call. = FALSE)
+        .ama_console_log("Input loaded", sprintf("%d characters; %d lines", nchar(txt), length(strsplit(txt, "\n", fixed = TRUE)[[1]])), .button = "AMA Journal")
+
+        shiny::incProgress(0.15, detail = "Splitting references")
+        selected_sources <- .ama_selected_ref_sources()
+        .ama_console_log("Parsers", paste(selected_sources, collapse = ", "), .button = "AMA Journal")
+        refs <- .ama_split_refs_selected(txt, selected_sources)
+        .ama_console_log("References", sprintf("detected normalized/selected entries = %d", length(refs)), .button = "AMA Journal")
+        if (!length(refs)) stop("No usable PubMed/AMA/Google Scholar/NCKU Scopus entries were detected.", call. = FALSE)
+
+        shiny::incProgress(0.20, detail = "Extracting journal names")
+        ama_processing_status("Processing: extracting journal names from AMA/PubMed/Google Scholar/NCKU Scopus text...")
+        .ama_console_log("Parser", "running strict/mixed PubMed-AMA/Google Scholar/NCKU Scopus parser", .button = "AMA Journal")
+
+        # Prefer Google Scholar/NCKU row parsing before the journal-list fallback.
+        # Otherwise article titles copied from Google Scholar/NCKU pages can be mistaken for journal names.
+        gs_profile_summary <- if ("google" %in% selected_sources) tryCatch(.ref_google_scholar_profile_summary(txt), error = function(e) data.frame()) else data.frame()
+        gs_articles <- .ama_parse_articles_selected(txt, selected_sources)
+        if (is.data.frame(gs_articles) && nrow(gs_articles) > 0) {
+          .ama_console_log("Parser", sprintf("Google Scholar/NCKU article rows detected: rows = %d; unique journals = %d", nrow(gs_articles), dplyr::n_distinct(gs_articles$journal)), .button = "AMA Journal")
+          wide_strict <- .ref_google_scholar_articles_to_wide(gs_articles)
+          journal_df2 <- data.frame(
+            reference_no = seq_len(nrow(gs_articles)),
+            journal = gs_articles$journal,
+            citations = gs_articles$citations,
+            year = gs_articles$year,
+            title = gs_articles$title,
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+          )
+          journal_df2$journal <- .ref_clean_journal_strict(journal_df2$journal)
+          journal_df2 <- journal_df2[!is.na(journal_df2$journal) & nzchar(journal_df2$journal), , drop = FALSE]
+          .ama_console_log("Parser done", sprintf("Google Scholar/NCKU wide rows = %d; columns = %s", nrow(wide_strict), paste(names(wide_strict), collapse = ", ")), .button = "AMA Journal")
+        } else {
+          exact_journal_df <- if ("ama" %in% selected_sources) .ref_extract_existing_journal_records(txt) else data.frame()
+          if (is.data.frame(exact_journal_df) && nrow(exact_journal_df) > 0) {
+            .ama_console_log("Parser", sprintf("detected existing journal list/table; exact journal records = %d", nrow(exact_journal_df)), .button = "AMA Journal")
+            journal_df2 <- exact_journal_df
+            wide_strict <- data.frame(Journal = journal_df2$journal, Author_1 = "", stringsAsFactors = FALSE, check.names = FALSE)
+            .ama_console_log("Parser done", sprintf("exact journal rows = %d; columns = %s", nrow(wide_strict), paste(names(wide_strict), collapse = ", ")), .button = "AMA Journal")
+          } else {
+            if (!("ama" %in% selected_sources)) stop("No normalized Google Scholar/NCKU rows were extracted, and AMA/PubMed parser is unchecked.", call. = FALSE)
+            wide_strict <- .ref_to_wide_from_text_strict(txt)
+            .ama_console_log("Parser done", sprintf("wide rows = %d; columns = %s", nrow(wide_strict), paste(names(wide_strict), collapse = ", ")), .button = "AMA Journal")
+
+            journal_vec <- .ref_clean_journal_strict(wide_strict$Journal)
+            journal_vec <- journal_vec[!is.na(journal_vec) & nzchar(journal_vec)]
+            journal_df2 <- data.frame(reference_no = seq_along(journal_vec), journal = journal_vec, stringsAsFactors = FALSE)
+          }
+        }
+        .ama_console_log("Journals", sprintf("extracted records = %d; unique journals = %d", nrow(journal_df2), dplyr::n_distinct(journal_df2$journal)), .button = "AMA Journal")
+
+        if (!is.data.frame(journal_df2) || nrow(journal_df2) == 0) {
+          stop("No journal names were extracted. Please check MEDLINE, AMA/PubMed, Google Scholar, or NCKU Pure/Scopus pasted format.", call. = FALSE)
+        }
+
+        top_df2 <- journal_df2 |>
+          dplyr::count(journal, name = "frequency", sort = TRUE) |>
+          dplyr::slice_head(n = input$ama_top_n %||% 20)
+
+        gs_since_year <- as.integer(format(Sys.Date(), "%Y")) - 5L
+        gs_metrics <- if (exists("gs_articles", inherits = FALSE) && is.data.frame(gs_articles) && nrow(gs_articles) > 0) .ref_google_scholar_metrics(gs_articles, since_year = gs_since_year) else data.frame(metric = "Google Scholar/NCKU article-citation rows", All = "Not detected", stringsAsFactors = FALSE, check.names = FALSE)
+        gs_author_hindex_first_last <- if (exists("gs_articles", inherits = FALSE) && is.data.frame(gs_articles) && nrow(gs_articles) > 0) .ref_google_scholar_author_hindex(gs_articles, basis = "first_last", since_year = gs_since_year) else data.frame()
+        gs_author_hindex_all <- if (exists("gs_articles", inherits = FALSE) && is.data.frame(gs_articles) && nrow(gs_articles) > 0) .ref_google_scholar_author_hindex(gs_articles, basis = "all", since_year = gs_since_year) else data.frame()
+        res <- list(journals = journal_df2, top = top_df2, total_refs = nrow(journal_df2), gs_articles = if (exists("gs_articles", inherits = FALSE)) gs_articles else data.frame(), gs_profile_summary = if (exists("gs_profile_summary", inherits = FALSE)) gs_profile_summary else data.frame(), gs_metrics = gs_metrics, gs_author_hindex_first_last = gs_author_hindex_first_last, gs_author_hindex_all = gs_author_hindex_all, gs_since_year = gs_since_year)
+
+        # Journal-only mode: do not build or overwrite the mixed Author/Journal network here.
+        # The mixed Journal + Author co-word network, Network plot, SSplot, Kano, and cluster AAC
+        # are produced only by the separate Run AMA author/journal extraction button.
+        shiny::incProgress(0.10, detail = "Saving journal-only results")
+        ama_journal_results_val(res)
+        ama_processing_status(paste0("Completed: extracted ", nrow(res$journals),
+                                     " journal records; unique journals = ",
+                                     dplyr::n_distinct(res$journals$journal), "."))
+        .ama_console_log("Completed", sprintf("journal records = %d; unique journals = %d; Top-N = %d", nrow(res$journals), dplyr::n_distinct(res$journals$journal), nrow(res$top)), .button = "AMA Journal")
+        showNotification("AMA journal extraction completed.", type = "message")
+        updateTabsetPanel(session, "main_tabs", selected = "AMA Journals")
+        shiny::incProgress(0.05, detail = "Done")
+      })
+    }, error = function(e) {
+      .ama_console_log("Error", conditionMessage(e), .button = "AMA Journal")
+      ama_processing_status(paste("Error:", conditionMessage(e)))
+      showNotification(paste("AMA journal extraction failed:", conditionMessage(e)), type = "error", duration = 10)
+      ama_journal_results_val(NULL)
+      # Keep author/journal results untouched if they already exist; do not shut the app down.
+    })
+  }, ignoreInit = TRUE)
+
+  output$ama_journal_summary <- renderText({
+    r <- ama_journal_results_val()
+    paste0(
+      "Input type: uploaded PubMed MEDLINE or AMA/PubMed reference text\n",
+      "References/records with journal extracted: ", nrow(r$journals), "\n",
+      "Unique journals: ", dplyr::n_distinct(r$journals$journal), "\n",
+      "Top N shown: ", input$ama_top_n, "\n\n",
+      "Most frequent journal: ",
+      ifelse(nrow(r$top) > 0, paste0(r$top$journal[1], " (n=", r$top$frequency[1], ")"), "None")
+    )
+  })
+
+  output$tbl_ama_gs_metrics <- DT::renderDT({
+    r <- ama_journal_results_val()
+    if (is.null(r) || is.null(r$gs_metrics) || !is.data.frame(r$gs_metrics) || !nrow(r$gs_metrics)) {
+      return(DT::datatable(data.frame(metric = "Google Scholar/NCKU article-citation rows", All = "Not detected", stringsAsFactors = FALSE, check.names = FALSE), rownames = FALSE,
+                           options = list(dom = "t", scrollX = TRUE)))
+    }
+    DT::datatable(r$gs_metrics, rownames = FALSE,
+                  options = list(dom = "t", scrollX = TRUE))
+  })
+
+
+  output$tbl_ama_gs_all_reference_hindex <- DT::renderDT({
+    r <- ama_journal_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    df <- .ref_google_scholar_all_reference_hindex(art, profile_summary = (if (!is.null(r)) r$gs_profile_summary %||% data.frame() else data.frame()))
+    DT::datatable(df, rownames = FALSE,
+                  options = list(dom = "t", scrollX = TRUE))
+  })
+
+  output$plt_ama_gs_year_bar <- renderPlot({
+    r <- ama_journal_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    .ref_plot_reference_year_bar(art, main = "Normalized Google Scholar / NCKU Scopus references by year")
+  })
+
+  output$tbl_ama_gs_year_bar <- DT::renderDT({
+    r <- ama_journal_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    df <- .ref_reference_year_counts(art)
+    if (!nrow(df)) df <- data.frame(Message = "No normalized parsed reference years available.", stringsAsFactors = FALSE)
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$tbl_ama_gs_author_hindex_first_last <- DT::renderDT({
+    r <- ama_journal_results_val()
+    df <- if (!is.null(r)) r$gs_author_hindex_first_last %||% data.frame() else data.frame()
+    if (is.null(r) || !is.data.frame(df) || !nrow(df)) {
+      return(DT::datatable(.ref_empty_author_hindex_message(), rownames = FALSE,
+                           options = list(dom = "t", scrollX = TRUE)))
+    }
+    show_cols <- intersect(c("author", "papers", "citations", "h_index", "i10_index", "first_author_papers", "last_author_papers", "papers_since", "citations_since", "h_index_since", "i10_index_since", "basis"), names(df))
+    DT::datatable(df[, show_cols, drop = FALSE], rownames = FALSE,
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$tbl_ama_gs_author_hindex_all <- DT::renderDT({
+    r <- ama_journal_results_val()
+    df <- if (!is.null(r)) r$gs_author_hindex_all %||% data.frame() else data.frame()
+    if (is.null(r) || !is.data.frame(df) || !nrow(df)) {
+      return(DT::datatable(.ref_empty_author_hindex_message(), rownames = FALSE,
+                           options = list(dom = "t", scrollX = TRUE)))
+    }
+    show_cols <- intersect(c("author", "papers", "citations", "h_index", "i10_index", "first_author_papers", "last_author_papers", "papers_since", "citations_since", "h_index_since", "i10_index_since", "basis"), names(df))
+    DT::datatable(df[, show_cols, drop = FALSE], rownames = FALSE,
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+
+  output$tbl_ama_ref_all_reference_hindex <- DT::renderDT({
+    r <- ama_ref_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    df <- .ref_google_scholar_all_reference_hindex(art, profile_summary = (if (!is.null(r)) r$gs_profile_summary %||% data.frame() else data.frame()))
+    DT::datatable(df, rownames = FALSE,
+                  options = list(dom = "t", scrollX = TRUE))
+  })
+
+  output$plt_ama_ref_year_bar <- renderPlot({
+    r <- ama_ref_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    .ref_plot_reference_year_bar(art, main = "Normalized Google Scholar / NCKU Scopus references by year")
+  })
+
+  output$tbl_ama_ref_year_bar <- DT::renderDT({
+    r <- ama_ref_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    df <- .ref_reference_year_counts(art)
+    if (!nrow(df)) df <- data.frame(Message = "No normalized parsed reference years available.", stringsAsFactors = FALSE)
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$tbl_ama_ref_author_hindex_first_last <- DT::renderDT({
+    r <- ama_ref_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    sy <- if (!is.null(r)) r$gs_since_year %||% (as.integer(format(Sys.Date(), "%Y")) - 5L) else (as.integer(format(Sys.Date(), "%Y")) - 5L)
+    df <- if (is.data.frame(art) && nrow(art)) .ref_google_scholar_author_hindex(art, basis = "first_last", since_year = sy) else data.frame()
+    if (!is.data.frame(df) || !nrow(df)) {
+      return(DT::datatable(.ref_empty_author_hindex_message(), rownames = FALSE,
+                           options = list(dom = "t", scrollX = TRUE)))
+    }
+    show_cols <- intersect(c("author", "papers", "citations", "h_index", "i10_index", "first_author_papers", "last_author_papers", "papers_since", "citations_since", "h_index_since", "i10_index_since", "basis"), names(df))
+    DT::datatable(df[, show_cols, drop = FALSE], rownames = FALSE,
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$tbl_ama_ref_author_hindex_all <- DT::renderDT({
+    r <- ama_ref_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    sy <- if (!is.null(r)) r$gs_since_year %||% (as.integer(format(Sys.Date(), "%Y")) - 5L) else (as.integer(format(Sys.Date(), "%Y")) - 5L)
+    df <- if (is.data.frame(art) && nrow(art)) .ref_google_scholar_author_hindex(art, basis = "all", since_year = sy) else data.frame()
+    if (!is.data.frame(df) || !nrow(df)) {
+      return(DT::datatable(.ref_empty_author_hindex_message(), rownames = FALSE,
+                           options = list(dom = "t", scrollX = TRUE)))
+    }
+    show_cols <- intersect(c("author", "papers", "citations", "h_index", "i10_index", "first_author_papers", "last_author_papers", "papers_since", "citations_since", "h_index_since", "i10_index_since", "basis"), names(df))
+    DT::datatable(df[, show_cols, drop = FALSE], rownames = FALSE,
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$tbl_ama_top_journals <- DT::renderDT({
+    DT::datatable(ama_journal_results_val()$top, rownames = FALSE,
+                  options = list(pageLength = 20, scrollX = TRUE))
+  })
+
+  output$tbl_ama_journal_author_top20_check <- renderPrint({
+    # IMPORTANT: do not use renderText() here.
+    # renderText()/cat() cannot print a data.frame/list safely and causes:
+    # "'cat' cannot handle argument type 'list'".
+    tryCatch({
+      cat("Top 20 author/journal elements for checking\n")
+      cat("This uses the strict PubMed/AMA parser and should contain only journal titles and author names.\n")
+      r <- ama_ref_results_val()
+      df <- .ref_top20_check_df(r)
+      print(.ama_plain_table(df, max_rows = 20), row.names = FALSE, right = FALSE)
+    }, error = function(e) {
+      cat("Top 20 author/journal elements for checking\n")
+      cat("Run AMA author/journal extraction first. ", conditionMessage(e), "\n", sep = "")
+    })
+  })
+
+  output$tbl_ama_journal_refs <- DT::renderDT({
+    DT::datatable(ama_journal_results_val()$journals, rownames = FALSE,
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$tbl_ama_gs_articles <- DT::renderDT({
+    r <- ama_journal_results_val()
+    if (is.null(r) || is.null(r$gs_articles) || !is.data.frame(r$gs_articles) || !nrow(r$gs_articles)) {
+      return(DT::datatable(data.frame(Message = "No Google Scholar/NCKU article-citation rows detected.", stringsAsFactors = FALSE), rownames = FALSE,
+                           options = list(dom = "t", scrollX = TRUE)))
+    }
+    show_cols <- intersect(c("reference_no", "source", "record_style", "normalized_record", "title", "authors", "journal", "citations", "year"), names(r$gs_articles))
+    DT::datatable(r$gs_articles[, show_cols, drop = FALSE], rownames = FALSE,
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$plt_ama_journal_pie <- renderPlot({
+    .plot_ama_journal_pie(ama_journal_results_val()$top)
+  })
+
+  output$plt_ama_journal_ss <- renderPlot({
+    tryCatch({
+      if (is.null(ama_journal_results_val())) stop("Click Run AMA journal extraction first.", call. = FALSE)
+      if (is.null(ama_ref_results_val()) || is.null(ama_ref_results_val()$nodes) || !is.data.frame(ama_ref_results_val()$nodes)) {
+        stop("No AMA Journal network nodes/edges are available yet. Run AMA journal extraction again.", call. = FALSE)
+      }
+      .ama705_draw_ssplot(font_scale = 1.55,
+                          footer_label = "AMA Journal extraction: Top20 author/journal nodes and edges")
+    }, error = function(e) {
+      plot.new()
+      text(0.5, 0.5, paste("SSplot error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2)
+    })
+  }, height = 900)
+
+  output$dl_ama_journal_csv <- downloadHandler(
+    filename = function(){ paste0("top20_ama_pubmed_journals_", Sys.Date(), ".csv") },
+    content = function(file){ readr::write_csv(ama_journal_results_val()$top, file) }
+  )
+
+  output$dl_ama_journal_pie <- downloadHandler(
+    filename = function(){ paste0("top20_ama_pubmed_journal_pie_", Sys.Date(), ".png") },
+    content = function(file){
+      ggplot2::ggsave(file, plot = .plot_ama_journal_pie(ama_journal_results_val()$top),
+                      width = 10, height = 8, dpi = 300)
+    }
+  )
+
+  output$dl_ama_journal_ss_png <- downloadHandler(
+    filename = function(){ paste0("ama_journal_top20_ssplot_", Sys.Date(), ".png") },
+    content = function(file){
+      grDevices::png(file, width = 3400, height = 2600, res = 260)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      if (is.null(ama_journal_results_val())) stop("Click Run AMA journal extraction first.", call. = FALSE)
+      .ama705_draw_ssplot(font_scale = 1.65,
+                          footer_label = "AMA Journal extraction: Top20 author/journal nodes and edges")
+    }
+  )
+
+
+  # ---- AMA/PubMed author + journal extraction: FLCA-MA-SIL Top20 ----
+  ama_ref_status <- reactiveVal("Ready: upload a PubMed/AMA TXT file or paste normalized Google Scholar/NCKU Scopus rows, then click Run author/journal extraction.")
+  ama_ref_results_val <- reactiveVal(NULL)
+
+  output$ama_ref_status <- renderText({
+    as.character(ama_ref_status() %||% "")
+  })
+
+  observeEvent(input$run_ama_author_journal, {
+    .ama_console_log("Button pressed", "Run AMA author/journal extraction", .button = "AMA Author/Journal")
+    ama_ref_status("Processing: checking input and running FLCA-MA-SIL...")
+    ama_ref_results_val(NULL)
+    .ama_console_log("Status", "cleared previous author/journal results", .button = "AMA Author/Journal")
+
+    tryCatch({
+      shiny::withProgress(message = "Running AMA author/journal extraction", value = 0, {
+        shiny::incProgress(0.10, detail = "Reading input")
+        .ama_console_log("Input", "reading AMA/PubMed text", .button = "AMA Author/Journal")
+        txt <- .get_ama_input_text(ama_ref_status)
+        if (is.null(txt) || !nzchar(trimws(txt))) stop("No uploaded or pasted AMA/PubMed/Google Scholar/NCKU Scopus text was found.", call. = FALSE)
+        .ama_console_log("Input loaded", sprintf("%d characters; %d lines", nchar(txt), length(strsplit(txt, "\n", fixed = TRUE)[[1]])), .button = "AMA Author/Journal")
+
+        shiny::incProgress(0.20, detail = "Splitting references")
+        selected_sources_ref <- .ama_selected_ref_sources()
+        .ama_console_log("Parsers", paste(selected_sources_ref, collapse = ", "), .button = "AMA Author/Journal")
+        refs <- .ama_split_refs_selected(txt, selected_sources_ref)
+        .ama_console_log("References", sprintf("detected normalized/selected entries = %d", length(refs)), .button = "AMA Author/Journal")
+        if (!length(refs)) stop("No usable PubMed/AMA/Google Scholar/NCKU Scopus entries were detected.", call. = FALSE)
+
+        shiny::incProgress(0.20, detail = "Extracting journals and authors")
+        gs_profile_summary_ref <- if ("google" %in% selected_sources_ref) tryCatch(.ref_google_scholar_profile_summary(txt), error = function(e) data.frame()) else data.frame()
+        gs_articles_ref <- .ama_parse_articles_selected(txt, selected_sources_ref)
+        if (is.data.frame(gs_articles_ref) && nrow(gs_articles_ref) > 0) {
+          wide <- .ref_google_scholar_articles_to_wide(gs_articles_ref)
+          .ama_console_log("Parser override", sprintf("Google Scholar/NCKU article parser used: rows = %d; unique journals = %d", nrow(wide), length(unique(wide$Journal[nzchar(wide$Journal)]))), .button = "AMA Author/Journal")
+        } else {
+          if (!("ama" %in% selected_sources_ref)) stop("No normalized Google Scholar/NCKU rows were extracted, and AMA/PubMed parser is unchecked.", call. = FALSE)
+          wide <- .ref_to_wide_from_text_strict(txt)
+          wide_gs_force <- if ("google" %in% selected_sources_ref) tryCatch(.ref_to_wide_google_scholar_force(txt), error = function(e) data.frame()) else data.frame()
+          if (is.data.frame(wide_gs_force) && nrow(wide_gs_force) >= 2L) {
+            # Prefer the force parser for Google Scholar profile pasted rows.
+            # This keeps the journal/source line as an actual Journal node.
+            wide <- wide_gs_force
+            .ama_console_log("Parser override", sprintf("Google Scholar force parser used: rows = %d; unique journals = %d", nrow(wide), length(unique(wide$Journal[nzchar(wide$Journal)]))), .button = "AMA Author/Journal")
+          }
+        }
+        .ama_console_log("Parser done", sprintf("wide rows = %d; columns = %s", nrow(wide), paste(names(wide), collapse = ", ")), .button = "AMA Author/Journal")
+
+        shiny::incProgress(0.15, detail = "Building nodes and edges")
+        ne <- .ref_build_nodes_edges(wide, top_n = Inf)
+        if ("Journal" %in% names(wide) && "name" %in% names(ne$nodes)) {
+          jset <- unique(trimws(as.character(wide$Journal)))
+          jset <- jset[!is.na(jset) & nzchar(jset)]
+          if (!"term_type" %in% names(ne$nodes)) ne$nodes$term_type <- "Author"
+          ne$nodes$term_type[ne$nodes$name %in% jset] <- "Journal"
+        }
+        .ama_console_log("Network data done", sprintf("raw nodes = %d; raw edges = %d; journal nodes = %d", nrow(ne$nodes), nrow(ne$edges), if ("term_type" %in% names(ne$nodes)) sum(ne$nodes$term_type == "Journal", na.rm = TRUE) else 0L), .button = "AMA Author/Journal")
+
+        shiny::incProgress(0.25, detail = "Running FLCA-MA-SIL Top20")
+        .ama_console_log("FLCA-MA-SIL", "running Top20 selection", .button = "AMA Author/Journal")
+        fl <- .ref_run_flca_top20(ne$nodes, ne$edges)
+        .ama_console_log("FLCA-MA-SIL done", sprintf("engine = %s", fl$engine %||% "unknown"), .button = "AMA Author/Journal")
+        # Accept both the original FLCA-MA-SIL engine and the Google Scholar
+        # Journal/Author Frequency Top20 engine.  The latter deliberately
+        # preserves high-frequency journal nodes (e.g., Medicine) before plotting.
+        payload <- .ref_sanitize_plot_payload(fl$nodes, fl$edges)
+        nd <- payload$nodes
+        ed <- payload$edges
+        if (!is.data.frame(nd) || nrow(nd) == 0) {
+          stop("FLCA-MA-SIL did not return a valid Top20 result.", call. = FALSE)
+        }
+        .ama_console_log("Payload", sprintf("Top20 nodes = %d; edges = %d", nrow(nd), nrow(ed)), .button = "AMA Author/Journal")
+        if (!is.data.frame(nd) || !nrow(nd)) stop("FLCA-MA-SIL returned no Top20 nodes.", call. = FALSE)
+
+        gs_since_year_ref <- as.integer(format(Sys.Date(), "%Y")) - 5L
+        ama_ref_results_val(list(
+          refs = refs,
+          wide = wide,
+          nodes = nd,
+          edges = ed,
+          engine = fl$engine,
+          raw_nodes = ne$nodes,
+          raw_edges = ne$edges,
+          gs_articles = if (exists("gs_articles_ref", inherits = FALSE)) gs_articles_ref else data.frame(),
+          gs_profile_summary = if (exists("gs_profile_summary_ref", inherits = FALSE)) gs_profile_summary_ref else data.frame(),
+          gs_since_year = gs_since_year_ref
+        ))
+
+        ama_ref_status(paste0("Completed via ", fl$engine, ": parsed ", length(refs),
+                              " references; ", nrow(wide), " journal/author rows; ",
+                              nrow(nd), " Top20 nodes; ", nrow(ed), " edges."))
+        .ama_console_log("Completed", sprintf("references = %d; wide rows = %d; Top20 nodes = %d; edges = %d", length(refs), nrow(wide), nrow(nd), nrow(ed)), .button = "AMA Author/Journal")
+        showNotification("AMA author/journal extraction completed via FLCA-MA-SIL.", type = "message")
+        updateTabsetPanel(session, "main_tabs", selected = "AMA Author/Journal")
+        shiny::incProgress(0.10, detail = "Done")
+      })
+    }, error = function(e) {
+      .ama_console_log("Error", conditionMessage(e), .button = "AMA Author/Journal")
+      ama_ref_status(paste("Error:", conditionMessage(e)))
+      showNotification(paste("AMA author/journal extraction failed:", conditionMessage(e)), type = "error", duration = 10)
+      # keep app alive; show a minimal empty payload so lower outputs do not crash
+      ama_ref_results_val(NULL)
+    })
+  }, ignoreInit = TRUE)
+
+  # ---- AMA Author/Journal outputs via FLCA-process plotting logic ----
+  # These bindings deliberately use tableOutput/renderTable and plotOutput/renderPlot.
+  # No DT, no htmlwidgets, no imageOutput, and no htmltools::HTML are used here,
+  # which avoids the repeated "not all is.character(txt)" display error.
+
+  .ama_display_df <- function(df, max_rows = 100) {
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+      return(data.frame(Message = "No records available.", stringsAsFactors = FALSE))
+    }
+    df <- as.data.frame(df, stringsAsFactors = FALSE, check.names = FALSE)
+    df <- .ref_format_numeric_2(df)
+    for (j in seq_along(df)) {
+      if (is.list(df[[j]]) || is.data.frame(df[[j]])) {
+        df[[j]] <- vapply(df[[j]], function(z) paste(as.character(unlist(z)), collapse = "; "), character(1))
+      }
+      if (is.numeric(df[[j]])) {
+        if (names(df)[j] %in% c("rank", "carac", "cluster", "membership")) {
+          df[[j]] <- as.integer(round(df[[j]], 0))
+        } else {
+          df[[j]] <- round(df[[j]], 2)
+        }
+      } else {
+        df[[j]] <- as.character(df[[j]])
+        df[[j]][is.na(df[[j]])] <- ""
+      }
+    }
+    if (nrow(df) > max_rows) df <- df[seq_len(max_rows), , drop = FALSE]
+    rownames(df) <- NULL
+    df
+  }
+
+  .ama_payload <- function() {
+    r <- ama_ref_results_val()
+    validate(need(!is.null(r), "Click Run AMA author/journal extraction first."))
+    p <- .ref_sanitize_plot_payload(r$nodes, r$edges)
+    list(nodes = p$nodes, edges = p$edges, wide = r$wide)
+  }
+
+  # ---- AMA Author/Journal plain table outputs ----
+  # Use renderPrint instead of renderText/DT/HTML. This avoids htmltools::HTML(txt)
+  # and the repeated "not all is.character(txt)" error in the lower tables.
+
+  .ama_plain_table <- function(df, max_rows = 100) {
+    if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) {
+      return(data.frame(Message = "No records available.", stringsAsFactors = FALSE))
+    }
+    df <- as.data.frame(df, stringsAsFactors = FALSE, check.names = FALSE)
+    if (nrow(df) > max_rows) df <- df[seq_len(max_rows), , drop = FALSE]
+
+    # Convert list/data-frame columns to character safely.
+    for (j in seq_along(df)) {
+      if (is.list(df[[j]]) || is.data.frame(df[[j]])) {
+        df[[j]] <- vapply(df[[j]], function(z) paste(as.character(unlist(z, use.names = FALSE)), collapse = "; "), character(1))
+      }
+    }
+
+    # Numeric formatting for display only.
+    int_cols <- intersect(c("rank", "carac", "cluster", "membership"), names(df))
+    for (nm in names(df)) {
+      if (is.numeric(df[[nm]])) {
+        if (nm %in% int_cols) {
+          df[[nm]] <- as.integer(round(df[[nm]], 0))
+        } else {
+          df[[nm]] <- sprintf("%.2f", df[[nm]])
+        }
+      } else {
+        df[[nm]] <- as.character(df[[nm]])
+        df[[nm]][is.na(df[[nm]])] <- ""
+      }
+    }
+    rownames(df) <- NULL
+    df
+  }
+
+  .ama_top20_plain <- function() {
+    r <- ama_ref_results_val()
+    if (is.null(r) || is.null(r$nodes) || !is.data.frame(r$nodes)) {
+      return(data.frame(Message = "Click Run AMA author/journal extraction first.", stringsAsFactors = FALSE))
+    }
+    nd <- as.data.frame(r$nodes, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!"name" %in% names(nd)) nd$name <- seq_len(nrow(nd))
+    nd$name <- as.character(nd$name)
+    nd$name[is.na(nd$name)] <- ""
+    if (!"value" %in% names(nd)) nd$value <- 0
+    if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+    if (!"carac" %in% names(nd)) nd$carac <- 1L
+    if (!"ssi" %in% names(nd) && "SSi" %in% names(nd)) nd$ssi <- nd$SSi
+    if (!"ssi" %in% names(nd)) nd$ssi <- 0
+    if (!"a_i" %in% names(nd)) nd$a_i <- 0
+    if (!"b_i" %in% names(nd)) nd$b_i <- 0
+    if (!"a_star1" %in% names(nd) && "a_star" %in% names(nd)) nd$a_star1 <- nd$a_star
+    if (!"a_star1" %in% names(nd)) nd$a_star1 <- 0
+
+    # Keep module-returned carac; do not recode it here.
+    for (cc in c("value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1")) {
+      nd[[cc]] <- suppressWarnings(as.numeric(nd[[cc]]))
+      nd[[cc]][!is.finite(nd[[cc]]) | is.na(nd[[cc]])] <- 0
+    }
+    keep <- intersect(c("name", "value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1"), names(nd))
+    out <- nd[, keep, drop = FALSE]
+    out$rank <- seq_len(nrow(out))
+    out <- out[, c("rank", setdiff(names(out), "rank")), drop = FALSE]
+    .ama_plain_table(out, max_rows = 20)
+  }
+
+  output$tbl_ama_ref_top20_check <- renderPrint({
+    print(.ama_top20_plain(), row.names = FALSE, right = FALSE)
+  })
+
+  output$tbl_ama_ref_nodes <- renderPrint({
+    print(.ama_top20_plain(), row.names = FALSE, right = FALSE)
+  })
+
+  output$tbl_ama_ref_edges <- renderPrint({
+    r <- ama_ref_results_val()
+    if (is.null(r) || is.null(r$edges) || !is.data.frame(r$edges)) {
+      print(data.frame(Message = "No edges available.", stringsAsFactors = FALSE), row.names = FALSE, right = FALSE)
+    } else {
+      print(.ama_plain_table(r$edges, max_rows = 100), row.names = FALSE, right = FALSE)
+    }
+  })
+
+  output$tbl_ama_ref_wide <- renderPrint({
+    r <- ama_ref_results_val()
+    if (is.null(r) || is.null(r$wide) || !is.data.frame(r$wide)) {
+      print(data.frame(Message = "No parsed journal/author table available.", stringsAsFactors = FALSE), row.names = FALSE, right = FALSE)
+    } else {
+      print(.ama_plain_table(r$wide, max_rows = 100), row.names = FALSE, right = FALSE)
+    }
+  })
+
+  .ama_flca_plot_network <- function(nodes, edges) {
+    nodes <- as.data.frame(nodes, stringsAsFactors = FALSE)
+    edges <- as.data.frame(edges, stringsAsFactors = FALSE)
+    nodes$name <- as.character(nodes$name)
+    nodes$value <- suppressWarnings(as.numeric(nodes$value)); nodes$value[!is.finite(nodes$value)] <- 1
+    if (!"carac" %in% names(nodes)) nodes$carac <- 1L
+    nodes$carac <- suppressWarnings(as.integer(nodes$carac)); nodes$carac[!is.finite(nodes$carac)] <- 1L
+    n <- nrow(nodes)
+    if (n < 1) { plot.new(); text(0.5, 0.5, "No nodes"); return(invisible()) }
+    theta <- seq(0, 2*pi, length.out = n + 1)[seq_len(n)]
+    xy <- data.frame(name = nodes$name, x = cos(theta), y = sin(theta), stringsAsFactors = FALSE)
+    rownames(xy) <- xy$name
+    plot(xy$x, xy$y, type = "n", axes = FALSE, xlab = "", ylab = "",
+         main = "Network from FLCA-MA-SIL Top20; numbers match Top20 rank")
+    if (nrow(edges)) {
+      if ("follower" %in% names(edges) && !"Follower" %in% names(edges)) names(edges)[names(edges)=="follower"] <- "Follower"
+      edges$Leader <- as.character(edges$Leader); edges$Follower <- as.character(edges$Follower)
+      edges <- edges[edges$Leader %in% nodes$name & edges$Follower %in% nodes$name, , drop = FALSE]
+      if (nrow(edges)) {
+        for (i in seq_len(nrow(edges))) {
+          segments(xy[edges$Leader[i], "x"], xy[edges$Leader[i], "y"],
+                   xy[edges$Follower[i], "x"], xy[edges$Follower[i], "y"], col = "grey75")
+        }
+      }
+    }
+    cols <- grDevices::hcl.colors(max(3, length(unique(nodes$carac))), "Dark 3")
+    cfac <- as.integer(factor(nodes$carac))
+    cexv <- 1.2 + 2.8 * sqrt(nodes$value) / max(sqrt(nodes$value), na.rm = TRUE)
+    points(xy$x, xy$y, pch = 21, bg = cols[cfac], cex = cexv)
+    text(xy$x, xy$y, labels = as.character(seq_len(n)), cex = 0.75)
+    legend("topright", legend = paste("Cluster", sort(unique(nodes$carac))),
+           pt.bg = cols[seq_along(sort(unique(nodes$carac)))], pch = 21, bty = "n", cex = 0.8)
+  }
+
+  output$vn_ama_ref <- renderPlot({
+    tryCatch({
+      payload <- .ama_payload()
+      .ama_flca_plot_network(payload$nodes, payload$edges)
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Network error:", conditionMessage(e)), col = "red") })
+  })
+
+  output$plt_ama_ref_ss <- renderPlot({
+    tryCatch({
+      payload <- .ama_payload()
+      nodes <- payload$nodes; edges <- payload$edges
+      nodes$name <- as.character(nodes$name)
+      nodes$carac <- suppressWarnings(as.integer(nodes$carac)); nodes$carac[!is.finite(nodes$carac)] <- 1L
+      if (!"sil_width" %in% names(nodes)) {
+        nodes$sil_width <- if ("ssi" %in% names(nodes)) suppressWarnings(as.numeric(nodes$ssi)) else 0
+      }
+      nodes$sil_width[!is.finite(nodes$sil_width)] <- 0
+      ok <- FALSE
+      if (exists("render_panel", mode = "function")) {
+        ok <- tryCatch({
+          draw_expr <- quote(render_panel(sil_df = nodes, nodes0 = nodes, nodes = nodes, top_n = 20,
+                                          footer_label = "AMA Journals/Authors via FLCA-MA-SIL"))
+          if (exists(".with_clean_ssplot_aac_labels", mode = "function")) {
+            .with_clean_ssplot_aac_labels(eval(draw_expr))
+          } else {
+            eval(draw_expr)
+          }
+          TRUE
+        }, error = function(e) FALSE)
+      }
+      if (!isTRUE(ok)) {
+        ss <- suppressWarnings(as.numeric(nodes$sil_width)); ss[!is.finite(ss)] <- 0
+        plot(ss, seq_along(ss), xlim = c(-1, 1), pch = 21, bg = "lightblue",
+             xlab = "Silhouette score", ylab = "Top20 rank",
+             main = "SSplot from FLCA-MA-SIL Top20")
+        abline(v = 0, lty = 2, col = "grey50")
+        text(ss, seq_along(ss), labels = seq_along(ss), cex = 0.75, pos = 3)
+      }
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("SSplot error:", conditionMessage(e)), col = "red") })
+  })
+
+  output$plt_ama_ref_kano <- renderPlot({
+    tryCatch({
+      payload <- .ama_payload()
+      nodes <- payload$nodes; edges <- payload$edges
+      nodes$name <- as.character(nodes$name)
+      nodes$value <- suppressWarnings(as.numeric(nodes$value)); nodes$value[!is.finite(nodes$value)] <- 0
+      nodes$value2 <- suppressWarnings(as.numeric(nodes$value2)); nodes$value2[!is.finite(nodes$value2)] <- nodes$value[!is.finite(nodes$value2)]
+      nodes$carac <- suppressWarnings(as.integer(nodes$carac)); nodes$carac[!is.finite(nodes$carac)] <- 1L
+      ok <- FALSE
+      if (exists("plot_kano_real", mode = "function")) {
+        ok <- tryCatch({
+          print(plot_kano_real(nodes = nodes, edges = edges, title_txt = "Kano plot from FLCA-MA-SIL Top20"))
+          TRUE
+        }, error = function(e) FALSE)
+      } else if (exists("kano_plot", mode = "function")) {
+        ok <- tryCatch({
+          print(kano_plot(nodes, edges, title_txt = "Kano plot from FLCA-MA-SIL Top20"))
+          TRUE
+        }, error = function(e) FALSE)
+      }
+      if (!isTRUE(ok)) {
+        plot(nodes$value2, nodes$value, pch = 21, bg = "lightblue",
+             xlab = "value2", ylab = "value", main = "Kano plot from FLCA-MA-SIL Top20")
+        abline(v = median(nodes$value2, na.rm = TRUE), h = median(nodes$value, na.rm = TRUE), lty = 2, col = "grey50")
+        text(nodes$value2, nodes$value, labels = seq_len(nrow(nodes)), cex = 0.75, pos = 3)
+      }
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Kano error:", conditionMessage(e)), col = "red") })
+  })
+
+
+
+  # ============================================================
+  # FINAL FIX: AMA Author/Journal plots as native inline SVG
+  # ------------------------------------------------------------
+  # The old plotOutput/renderPlot path can leave only <img alt="Plot object">
+  # in the AMA tab.  These output IDs are now uiOutput/renderUI, so the plots
+  # are real SVG elements in the page, not Shiny image files.
+  # ============================================================
+
+  .ama_svg_escape <- function(x) {
+    x <- as.character(x)
+    x[is.na(x)] <- ""
+    htmltools::htmlEscape(x)
+  }
+
+  .ama_svg_num <- function(x, default = 0) {
+    y <- suppressWarnings(as.numeric(x))
+    y[!is.finite(y) | is.na(y)] <- default
+    y
+  }
+
+
+  # ---- SSplot label cleanup for AMA Author/Journal ----
+  # renderSSplot.R may print both a standalone AAC number and a cluster label
+  # beginning with "AAC=...".  This wrapper keeps the standalone number but
+  # removes the duplicated "AAC=" prefix in text/mtext labels.
+  .ama_clean_aac_label <- function(labels) {
+    z <- as.character(labels)
+    z[is.na(z)] <- ""
+
+    # Keep the small standalone AAC number printed beside each cluster,
+    # but remove the duplicated AAC value embedded in the large red cluster label.
+    # Examples converted:
+    #   "AAC=0.89 + SS=0.32 ..." -> "SS=0.32 ..."
+    #   "0.89 + SS=0.32 ..."     -> "SS=0.32 ..."
+    #   "AAC=0.89 | SS=0.32 ..." -> "SS=0.32 ..."
+    z <- gsub("^\\s*AAC\\s*=\\s*[-+]?\\d+(?:\\.\\d+)?\\s*(?:\\+|\\||,|;)\\s*", "", z, perl = TRUE)
+    z <- gsub("^\\s*[-+]?\\d+(?:\\.\\d+)?\\s*(?:\\+|\\||,|;)\\s*(?=SS\\s*=)", "", z, perl = TRUE)
+
+    # For a label that is only "AAC=0.xx", keep the numeric value.
+    only_aac <- grepl("^\\s*AAC\\s*=\\s*([-+]?\\d+(?:\\.\\d+)?)\\s*$", z, perl = TRUE)
+    z[only_aac] <- sub("^\\s*AAC\\s*=\\s*([-+]?\\d+(?:\\.\\d+)?)\\s*$", "\\1", z[only_aac], perl = TRUE)
+
+    # Remove any remaining inline AAC=... fragment, leaving SS/a*/n text intact.
+    z <- gsub("\\bAAC\\s*=\\s*[-+]?\\d+(?:\\.\\d+)?\\s*", "", z, perl = TRUE)
+    z <- gsub("^\\s*\\|\\s*", "", z, perl = TRUE)
+    z <- gsub("\\s{2,}", " ", z, perl = TRUE)
+    trimws(z)
+  }
+
+
+  .with_clean_ssplot_aac_labels <- function(expr) {
+    old_text_exists <- exists("text", envir = .GlobalEnv, inherits = FALSE)
+    old_mtext_exists <- exists("mtext", envir = .GlobalEnv, inherits = FALSE)
+    old_text <- if (old_text_exists) get("text", envir = .GlobalEnv, inherits = FALSE) else NULL
+    old_mtext <- if (old_mtext_exists) get("mtext", envir = .GlobalEnv, inherits = FALSE) else NULL
+
+    # Some renderSSplot.R versions call graphics::text()/graphics::mtext() explicitly.
+    # Therefore, clean both the global free-variable lookup and the graphics namespace
+    # temporarily, then restore them immediately after drawing.
+    graphics_ns <- asNamespace("graphics")
+    old_ns_text <- get("text", envir = graphics_ns)
+    old_ns_mtext <- get("mtext", envir = graphics_ns)
+
+    text_wrapper <- function(x, y = NULL, labels, ...) {
+      if (missing(labels) || is.null(labels) || length(labels) == 0L) {
+        old_ns_text(x = x, y = y, ...)
+      } else {
+        old_ns_text(x = x, y = y, labels = .ama_clean_aac_label(labels), ...)
+      }
+    }
+    mtext_wrapper <- function(text, ...) {
+      if (missing(text) || is.null(text) || length(text) == 0L) {
+        old_ns_mtext(...)
+      } else {
+        old_ns_mtext(text = .ama_clean_aac_label(text), ...)
+      }
+    }
+
+    assign("text", text_wrapper, envir = .GlobalEnv)
+    assign("mtext", mtext_wrapper, envir = .GlobalEnv)
+
+    ns_text_unlocked <- FALSE
+    ns_mtext_unlocked <- FALSE
+    try({ unlockBinding("text", graphics_ns); ns_text_unlocked <- TRUE; assign("text", text_wrapper, envir = graphics_ns); lockBinding("text", graphics_ns); ns_text_unlocked <- FALSE }, silent = TRUE)
+    try({ unlockBinding("mtext", graphics_ns); ns_mtext_unlocked <- TRUE; assign("mtext", mtext_wrapper, envir = graphics_ns); lockBinding("mtext", graphics_ns); ns_mtext_unlocked <- FALSE }, silent = TRUE)
+
+    on.exit({
+      if (old_text_exists) assign("text", old_text, envir = .GlobalEnv) else if (exists("text", envir = .GlobalEnv, inherits = FALSE)) rm("text", envir = .GlobalEnv)
+      if (old_mtext_exists) assign("mtext", old_mtext, envir = .GlobalEnv) else if (exists("mtext", envir = .GlobalEnv, inherits = FALSE)) rm("mtext", envir = .GlobalEnv)
+      try({ if (bindingIsLocked("text", graphics_ns)) unlockBinding("text", graphics_ns); assign("text", old_ns_text, envir = graphics_ns); lockBinding("text", graphics_ns) }, silent = TRUE)
+      try({ if (bindingIsLocked("mtext", graphics_ns)) unlockBinding("mtext", graphics_ns); assign("mtext", old_ns_mtext, envir = graphics_ns); lockBinding("mtext", graphics_ns) }, silent = TRUE)
+    }, add = TRUE)
+
+    force(expr)
+  }
+
+
+  # ---- Safe scalar conversion helpers for AMA Author/Journal outputs ----
+  # Required by .ama705_payload(), .ama705_network_widget(), and downloads.
+  .ama705_chr <- function(x) {
+    x <- as.character(x)
+    x[is.na(x)] <- ""
+    x
+  }
+
+  .ama705_num <- function(x, default = 0) {
+    z <- suppressWarnings(as.numeric(x))
+    if (length(default) > 1L) {
+      d <- suppressWarnings(as.numeric(default))
+      if (length(d) != length(z)) d <- rep_len(d, length(z))
+    } else {
+      d <- rep_len(suppressWarnings(as.numeric(default)), length(z))
+    }
+    d[!is.finite(d) | is.na(d)] <- 0
+    z[!is.finite(z) | is.na(z)] <- d[!is.finite(z) | is.na(z)]
+    z
+  }
+
+  .ama705_escape <- function(x) {
+    x <- .ama705_chr(x)
+    x <- gsub("&", "&amp;", x, fixed = TRUE)
+    x <- gsub("<", "&lt;", x, fixed = TRUE)
+    x <- gsub(">", "&gt;", x, fixed = TRUE)
+    x <- gsub('"', "&quot;", x, fixed = TRUE)
+    x
+  }
+
+  .ama705_payload <- function() {
+    r <- ama_ref_results_val()
+    if (is.null(r) || is.null(r$nodes) || !is.data.frame(r$nodes)) {
+      stop("Run AMA author/journal extraction first.", call. = FALSE)
+    }
+    nd <- as.data.frame(r$nodes, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!"name" %in% names(nd)) nd$name <- .ama705_chr(nd[[1]])
+    nd$name <- trimws(.ama705_chr(nd$name))
+    nd <- nd[nzchar(nd$name), , drop = FALSE]
+    nd <- nd[!duplicated(nd$name), , drop = FALSE]
+    if (!nrow(nd)) stop("No Top20 nodes available.", call. = FALSE)
+
+    if (!"value" %in% names(nd)) nd$value <- 1
+    if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+    if (!"carac" %in% names(nd)) nd$carac <- 1
+    if (!"ssi" %in% names(nd) && "SSi" %in% names(nd)) nd$ssi <- nd$SSi
+    if (!"ssi" %in% names(nd) && "sil_width" %in% names(nd)) nd$ssi <- nd$sil_width
+    if (!"ssi" %in% names(nd)) nd$ssi <- 0
+    if (!"a_i" %in% names(nd)) nd$a_i <- 0
+    if (!"b_i" %in% names(nd)) nd$b_i <- 0
+    if (!"a_star1" %in% names(nd) && "a_star" %in% names(nd)) nd$a_star1 <- nd$a_star
+    if (!"a_star1" %in% names(nd)) nd$a_star1 <- 0
+    nd$value <- .ama705_num(nd$value, 1)
+    nd$value2 <- .ama705_num(nd$value2, nd$value)
+    nd$carac <- suppressWarnings(as.integer(gsub("[^0-9-]", "", .ama705_chr(nd$carac))))
+    nd$carac[!is.finite(nd$carac) | is.na(nd$carac)] <- 1L
+    nd$ssi <- .ama705_num(nd$ssi, 0)
+    nd$a_i <- .ama705_num(nd$a_i, 0)
+    nd$b_i <- .ama705_num(nd$b_i, 0)
+    nd$a_star1 <- .ama705_num(nd$a_star1, 0)
+    if (!"rank" %in% names(nd)) nd$rank <- seq_len(nrow(nd))
+    nd$rank <- suppressWarnings(as.integer(nd$rank))
+    nd$rank[!is.finite(nd$rank) | is.na(nd$rank)] <- seq_len(nrow(nd))[!is.finite(nd$rank) | is.na(nd$rank)]
+    nd <- nd[order(nd$rank, -nd$value, -nd$value2), , drop = FALSE]
+    nd$rank <- seq_len(nrow(nd))
+    nd <- utils::head(nd, 20)
+
+    ed <- if (!is.null(r$edges) && is.data.frame(r$edges)) as.data.frame(r$edges, stringsAsFactors = FALSE, check.names = FALSE) else data.frame()
+    if (nrow(ed)) {
+      if (all(c("Source", "Target") %in% names(ed)) && !all(c("Leader", "Follower") %in% names(ed))) {
+        names(ed)[match(c("Source", "Target"), names(ed))] <- c("Leader", "Follower")
+      }
+      if ("follower" %in% names(ed) && !"Follower" %in% names(ed)) names(ed)[names(ed) == "follower"] <- "Follower"
+      if (!"WCD" %in% names(ed)) {
+        wname <- intersect(c("weight", "value", "Count", "count", "n"), names(ed))[1]
+        ed$WCD <- if (length(wname)) ed[[wname]] else 1
+      }
+      if (all(c("Leader", "Follower", "WCD") %in% names(ed))) {
+        ed <- ed[, c("Leader", "Follower", "WCD"), drop = FALSE]
+        ed$Leader <- trimws(.ama705_chr(ed$Leader))
+        ed$Follower <- trimws(.ama705_chr(ed$Follower))
+        ed$WCD <- .ama705_num(ed$WCD, 1)
+        ed <- ed[nzchar(ed$Leader) & nzchar(ed$Follower) & ed$Leader != ed$Follower & ed$WCD > 0, , drop = FALSE]
+        ed <- ed[ed$Leader %in% nd$name & ed$Follower %in% nd$name, , drop = FALSE]
+      } else {
+        ed <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
+      }
+    } else {
+      ed <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
+    }
+    list(nodes = nd, edges = ed, raw = r)
+  }
+
+  .ama705_fmt_table <- function(df, max_rows = Inf) {
+    df <- as.data.frame(df, stringsAsFactors = FALSE, check.names = FALSE)
+    if (is.finite(max_rows)) df <- utils::head(df, max_rows)
+    for (cc in names(df)) {
+      if (is.numeric(df[[cc]])) {
+        if (cc == "rank" || cc == "carac") df[[cc]] <- as.integer(round(df[[cc]]))
+        else df[[cc]] <- sprintf("%.2f", df[[cc]])
+      }
+    }
+    df
+  }
+
+  .ama705_one_link_edges <- function(nodes, edges) {
+    nd <- as.data.frame(nodes, stringsAsFactors = FALSE)
+    ed <- as.data.frame(edges, stringsAsFactors = FALSE)
+    if (!nrow(ed)) return(ed)
+    ed$Leader <- .ama705_chr(ed$Leader)
+    ed$Follower <- .ama705_chr(ed$Follower)
+    ed$WCD <- .ama705_num(ed$WCD, 1)
+    ed <- ed[ed$Leader %in% nd$name & ed$Follower %in% nd$name & ed$Leader != ed$Follower & ed$WCD > 0, , drop = FALSE]
+    if (!nrow(ed)) return(ed)
+    # Treat the stronger/higher-value endpoint as leader when direction is ambiguous.
+    val <- setNames(.ama705_num(nd$value2, nd$value), nd$name)
+    swap <- val[ed$Follower] > val[ed$Leader]
+    if (any(swap, na.rm = TRUE)) {
+      tmp <- ed$Leader[swap]
+      ed$Leader[swap] <- ed$Follower[swap]
+      ed$Follower[swap] <- tmp
+    }
+    ed <- ed[order(ed$Follower, -ed$WCD, -val[ed$Leader], ed$Leader), , drop = FALSE]
+    ed <- ed[!duplicated(ed$Follower), , drop = FALSE]
+    ed <- ed[order(match(ed$Follower, nd$name)), , drop = FALSE]
+    rownames(ed) <- NULL
+    ed
+  }
+
+  .ama705_network_widget <- function() {
+    z <- .ama705_payload()
+    nd <- z$nodes
+    ed <- .ama705_one_link_edges(nd, z$edges)
+    mx <- max(nd$value, na.rm = TRUE); if (!is.finite(mx) || mx <= 0) mx <- 1
+    groups <- paste0("Cluster ", nd$carac)
+    vn_nodes <- data.frame(
+      id = .ama705_chr(nd$name),
+      label = .ama705_chr(nd$name),
+      group = .ama705_chr(groups),
+      value = as.numeric(pmax(12, 20 + 55 * sqrt(pmax(nd$value, 0)) / sqrt(mx))),
+      title = .ama705_escape(paste0("Rank: ", nd$rank,
+                                    "<br>Name: ", nd$name,
+                                    "<br>Cluster: ", nd$carac,
+                                    "<br>value: ", sprintf("%.2f", nd$value),
+                                    "<br>value2: ", sprintf("%.2f", nd$value2),
+                                    "<br>SS: ", sprintf("%.2f", nd$ssi))),
+      stringsAsFactors = FALSE
+    )
+    vn_edges <- data.frame(
+      from = .ama705_chr(ed$Leader),
+      to = .ama705_chr(ed$Follower),
+      value = as.numeric(pmax(1, ed$WCD)),
+      label = .ama705_chr(sprintf("%.0f", ed$WCD)),
+      title = .ama705_escape(paste0(ed$Leader, " -> ", ed$Follower, "<br>WCD=", sprintf("%.2f", ed$WCD))),
+      arrows = rep("to", nrow(ed)),
+      stringsAsFactors = FALSE
+    )
+    visNetwork::visNetwork(vn_nodes, vn_edges, width = "100%", height = "760px",
+                           main = "Interactive network: FLCA-MA-SIL Top20; one primary edge per follower") %>%
+      visNetwork::visNodes(shape = "dot",
+                            font = list(size = 26, face = "bold", color = "#111111", strokeWidth = 3)) %>%
+      visNetwork::visEdges(smooth = list(enabled = TRUE, type = "dynamic"),
+                            font = list(size = 18, face = "bold", align = "middle"),
+                            color = list(color = "#888888", highlight = "#d62728")) %>%
+      visNetwork::visOptions(highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE),
+                              nodesIdSelection = TRUE,
+                              selectedBy = list(variable = "group", multiple = TRUE)) %>%
+      visNetwork::visPhysics(stabilization = TRUE, solver = "forceAtlas2Based") %>%
+      visNetwork::visLayout(randomSeed = 705)
+  }
+
+
+
+
+  .ama705_modularity_results <- function(nd, edges) {
+    nd <- as.data.frame(nd, stringsAsFactors = FALSE, check.names = FALSE)
+    nd$name <- .ama705_chr(nd$name)
+    nd$carac <- suppressWarnings(as.integer(nd$carac))
+    nd$carac[!is.finite(nd$carac) | is.na(nd$carac)] <- 1L
+    nd$sil_width <- .ama705_num(nd$sil_width, 0)
+    clv <- sort(unique(stats::na.omit(nd$carac)))
+    if (!length(clv)) clv <- 1L
+
+    base_results <- do.call(rbind, lapply(clv, function(cc) {
+      sub <- nd[nd$carac == cc, , drop = FALSE]
+      data.frame(
+        Cluster = paste0("C", cc),
+        SS = mean(sub$sil_width, na.rm = TRUE),
+        Qw = 0, Qu = 0, Q = 0,
+        D_GiniSimpson = NA_real_, Q_over_D = 0,
+        OneMinus_1_over_k = NA_real_, Q_over_Dmax_eff = 0,
+        n = nrow(sub), stringsAsFactors = FALSE
+      )
+    }))
+
+    overall <- data.frame(
+      Cluster = "OVERALL",
+      SS = mean(nd$sil_width, na.rm = TRUE),
+      Qw = 0, Qu = 0, Q = 0,
+      D_GiniSimpson = NA_real_, Q_over_D = 0,
+      OneMinus_1_over_k = NA_real_, Q_over_Dmax_eff = 0,
+      n = nrow(nd), stringsAsFactors = FALSE
+    )
+
+    # Modularity is computed from FLCA cluster membership (nodes$carac) and
+    # the full Top20 edge set returned by the FLCA-MA-SIL process.  The one-link
+    # edge set is used for the interactive dashboard only; Q should not be
+    # forced to zero when the FLCA module has valid edges.
+    ed <- as.data.frame(edges, stringsAsFactors = FALSE, check.names = FALSE)
+    if (nrow(ed) && all(c("Leader", "Follower", "WCD") %in% names(ed))) {
+      ed$Leader <- .ama705_chr(ed$Leader)
+      ed$Follower <- .ama705_chr(ed$Follower)
+      ed$WCD <- .ama705_num(ed$WCD, 1)
+      ed <- ed[ed$Leader %in% nd$name & ed$Follower %in% nd$name &
+                 ed$Leader != ed$Follower & ed$WCD > 0, , drop = FALSE]
+      if (nrow(ed)) {
+        ed$a <- pmin(ed$Leader, ed$Follower)
+        ed$b <- pmax(ed$Leader, ed$Follower)
+        edw <- stats::aggregate(WCD ~ a + b, data = ed, FUN = sum)
+        ed1 <- edw
+        ed1$WCD <- 1
+
+        .q_contrib <- function(e2, weighted = TRUE) {
+          w <- if (weighted) .ama705_num(e2$WCD, 1) else rep(1, nrow(e2))
+          m <- sum(w, na.rm = TRUE)
+          out <- setNames(rep(0, length(clv)), paste0("C", clv))
+          if (!is.finite(m) || m <= 0) return(list(overall = 0, per = out))
+          cl <- setNames(nd$carac, nd$name)
+          deg <- setNames(rep(0, nrow(nd)), nd$name)
+          for (i in seq_len(nrow(e2))) {
+            deg[e2$a[i]] <- deg[e2$a[i]] + w[i]
+            deg[e2$b[i]] <- deg[e2$b[i]] + w[i]
+          }
+          for (cc in clv) {
+            members <- nd$name[nd$carac == cc]
+            internal <- e2$a %in% members & e2$b %in% members
+            l_c <- sum(w[internal], na.rm = TRUE)
+            d_c <- sum(deg[members], na.rm = TRUE)
+            q_c <- (l_c / m) - (d_c / (2 * m))^2
+            if (!is.finite(q_c)) q_c <- 0
+            out[paste0("C", cc)] <- q_c
+          }
+          list(overall = sum(out, na.rm = TRUE), per = out)
+        }
+
+        qw <- .q_contrib(edw, weighted = TRUE)
+        qu <- .q_contrib(ed1, weighted = FALSE)
+        base_results$Qw <- as.numeric(qw$per[paste0("C", clv)])
+        base_results$Qu <- as.numeric(qu$per[paste0("C", clv)])
+        base_results$Q <- base_results$Qw
+        overall$Qw <- qw$overall
+        overall$Qu <- qu$overall
+        overall$Q <- qw$overall
+      }
+    }
+
+    cc <- nd$carac[!is.na(nd$carac)]
+    if (length(cc)) {
+      pk <- as.numeric(table(cc)) / length(cc)
+      D <- 1 - sum(pk^2)
+      k <- length(unique(cc))
+      Dmax <- if (k > 0) 1 - 1/k else NA_real_
+      overall$D_GiniSimpson <- D
+      overall$OneMinus_1_over_k <- Dmax
+      overall$Q_over_D <- if (is.finite(D) && D > 0) overall$Qw / D else 0
+      overall$Q_over_Dmax_eff <- if (is.finite(Dmax) && Dmax > 0) overall$Qw / Dmax else 0
+    }
+    base_results$SS[!is.finite(base_results$SS)] <- 0
+    overall$SS[!is.finite(overall$SS)] <- 0
+    rbind(overall, base_results)
+  }
+
+  .ama705_ss_inputs <- function() {
+    z <- .ama705_payload()
+    nd <- z$nodes
+    ed1 <- .ama705_one_link_edges(nd, z$edges)
+    nd$sil_width <- nd$ssi
+    nd$wsel <- NA_real_
+    nd$role <- NA_character_
+    nd$neighbor_name <- nd$name
+    nd$neighborC <- nd$carac
+    if (nrow(ed1)) {
+      for (i in seq_len(nrow(ed1))) {
+        j <- match(ed1$Follower[i], nd$name)
+        k <- match(ed1$Leader[i], nd$name)
+        if (!is.na(j)) {
+          nd$wsel[j] <- ed1$WCD[i]
+          nd$role[j] <- "follower"
+          nd$neighbor_name[j] <- ed1$Leader[i]
+          nd$neighborC[j] <- if (!is.na(k)) nd$carac[k] else nd$carac[j]
+        }
+      }
+    }
+    leaders <- tapply(seq_len(nrow(nd)), nd$carac, function(ii) ii[order(-nd$value2[ii], -nd$value[ii], nd$rank[ii])][1])
+    nd$role[as.integer(leaders)] <- "leader"
+    results <- .ama705_modularity_results(nd, z$edges)
+    list(sil_df = nd, nodes0 = nd, nodes = nd, results = results)
+  }
+
+  .ama705_draw_ssplot <- function(font_scale = 1.55,
+                                  footer_label = "AMA Journals/Authors via FLCA-MA-SIL") {
+    inp <- .ama705_ss_inputs()
+    if (!exists("render_panel", mode = "function")) {
+      stop("render_panel() not loaded from renderSSplot.R or renderSSplot(79).R.", call. = FALSE)
+    }
+    .with_clean_ssplot_aac_labels({
+      render_panel(sil_df = inp$sil_df, nodes0 = inp$nodes0, results = inp$results,
+                   nodes = inp$nodes, top_n = nrow(inp$sil_df), font_scale = font_scale,
+                   aac_side = "left", neighbor_side = "right", neighbor_on_bar = TRUE,
+                   footer_label = footer_label)
+    })
+  }
+
+
+  .ama705_print_kano_object <- function(obj) {
+    if (inherits(obj, "ggplot")) {
+      obj <- obj +
+        ggplot2::theme(
+          aspect.ratio = 1.35,
+          text = ggplot2::element_text(face = "bold"),
+          plot.title = ggplot2::element_text(face = "bold", size = 28),
+          axis.title = ggplot2::element_text(face = "bold", size = 22),
+          axis.text = ggplot2::element_text(face = "bold", size = 16),
+          legend.title = ggplot2::element_text(face = "bold", size = 18),
+          legend.text = ggplot2::element_text(face = "bold", size = 15),
+          plot.margin = ggplot2::margin(18, 24, 18, 24)
+        )
+      print(obj)
+    } else if (inherits(obj, c("grob", "recordedplot"))) {
+      print(obj)
+    } else if (!is.null(obj)) {
+      print(obj)
+    }
+    invisible(TRUE)
+  }
+
+  .ama705_draw_kano <- function() {
+    z <- .ama705_payload()
+    nd <- z$nodes
+    ed <- .ama705_one_link_edges(nd, z$edges)
+    ok <- FALSE
+    if (exists("plot_kano_real", mode = "function")) {
+      ok <- tryCatch({
+        obj <- plot_kano_real(nodes = nd, edges = ed, title_txt = "Kano plot from FLCA-MA-SIL Top20")
+        .ama705_print_kano_object(obj)
+        TRUE
+      }, error = function(e) FALSE)
+    }
+    if (!ok && exists("kano_plot", mode = "function")) {
+      ok <- tryCatch({
+        obj <- kano_plot(nd, ed, title_txt = "Kano plot from FLCA-MA-SIL Top20")
+        .ama705_print_kano_object(obj)
+        TRUE
+      }, error = function(e) FALSE)
+    }
+    if (ok) return(invisible(TRUE))
+    if (requireNamespace("ggplot2", quietly = TRUE)) {
+      nd$cluster <- factor(nd$carac)
+      medx <- stats::median(nd$value2, na.rm = TRUE)
+      medy <- stats::median(nd$value, na.rm = TRUE)
+      p <- ggplot2::ggplot(nd, ggplot2::aes(x = value2, y = value, size = value, color = cluster, label = name)) +
+        ggplot2::geom_vline(xintercept = medx, linetype = "dashed", linewidth = 1.2, color = "red") +
+        ggplot2::geom_hline(yintercept = medy, linetype = "dashed", linewidth = 1.2, color = "red") +
+        ggplot2::geom_point(alpha = 0.85) +
+        ggplot2::geom_text(fontface = "bold", size = 5.5, vjust = -1.05, show.legend = FALSE) +
+        ggplot2::scale_size_continuous(range = c(5, 18)) +
+        ggplot2::labs(title = "Kano plot from FLCA-MA-SIL Top20",
+                      subtitle = "x = value2 (sum of WCD); y = value; color = FLCA cluster",
+                      x = "value2", y = "value", color = "Cluster", size = "value") +
+        ggplot2::theme_bw(base_size = 21) +
+        ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 28),
+                       plot.subtitle = ggplot2::element_text(face = "bold", size = 18),
+                       axis.title = ggplot2::element_text(face = "bold", size = 23),
+                       axis.text = ggplot2::element_text(face = "bold", size = 17),
+                       legend.title = ggplot2::element_text(face = "bold", size = 19),
+                       legend.text = ggplot2::element_text(face = "bold", size = 16),
+                       aspect.ratio = 1.35,
+                       plot.margin = ggplot2::margin(18, 24, 18, 24))
+      print(p)
+    } else {
+      cols <- grDevices::hcl.colors(max(3, length(unique(nd$carac))), "Dark 3")
+      bg <- cols[as.integer(factor(nd$carac))]
+      par(mar = c(5, 5, 5, 3))
+      plot(nd$value2, nd$value, pch = 21, bg = bg, cex = 2.6,
+           xlab = "value2", ylab = "value", main = "Kano plot from FLCA-MA-SIL Top20",
+           cex.main = 1.9, cex.lab = 1.6, cex.axis = 1.35, font.main = 2, font.lab = 2)
+      abline(v = stats::median(nd$value2, na.rm = TRUE), h = stats::median(nd$value, na.rm = TRUE), lty = 2, col = "red", lwd = 2)
+      text(nd$value2, nd$value, labels = nd$name, cex = 1.05, font = 2, pos = 3)
+      legend("topright", legend = paste("Cluster", sort(unique(nd$carac))), pt.bg = cols[seq_along(sort(unique(nd$carac)))], pch = 21, bty = "n", cex = 1.1)
+    }
+    invisible(TRUE)
+  }
+
+
+
+  .ama705_cluster_positions <- function(nd) {
+    nd <- as.data.frame(nd, stringsAsFactors = FALSE, check.names = FALSE)
+    nd$name <- .ama705_chr(nd$name)
+    nd$carac <- suppressWarnings(as.integer(gsub("[^0-9-]", "", .ama705_chr(nd$carac))))
+    nd$carac[!is.finite(nd$carac) | is.na(nd$carac)] <- 1L
+    nd$value <- .ama705_num(nd$value, 1)
+    if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+    nd$value2 <- .ama705_num(nd$value2, nd$value)
+    if (!"ssi" %in% names(nd)) nd$ssi <- 0
+    nd$ssi <- .ama705_num(nd$ssi, 0)
+    nd$rank <- if ("rank" %in% names(nd)) suppressWarnings(as.integer(nd$rank)) else seq_len(nrow(nd))
+    bad_rank <- !is.finite(nd$rank) | is.na(nd$rank)
+    if (any(bad_rank)) nd$rank[bad_rank] <- seq_len(nrow(nd))[bad_rank]
+
+    nd$cluster_leader <- FALSE
+    clv <- sort(unique(nd$carac))
+    k <- length(clv)
+    if (!k) k <- 1L
+
+    center_angle <- seq(pi/2, pi/2 - 2*pi + 2*pi/k, length.out = k)
+    centers <- data.frame(carac = clv,
+                          cx = 560 * cos(center_angle),
+                          cy = 560 * sin(center_angle),
+                          stringsAsFactors = FALSE)
+
+    out <- nd
+    out$x <- 0
+    out$y <- 0
+    for (cc in clv) {
+      ii <- which(out$carac == cc)
+      ii <- ii[order(-out$value2[ii], -out$value[ii], out$rank[ii], out$name[ii])]
+      m <- length(ii)
+      cen <- centers[centers$carac == cc, , drop = FALSE]
+      leader <- ii[1]
+      out$cluster_leader[leader] <- TRUE
+      out$x[leader] <- cen$cx
+      out$y[leader] <- cen$cy
+      if (m > 1L) {
+        followers <- ii[-1]
+        local_r <- 115 + 22 * m
+        ang <- seq(pi/2, pi/2 - 2*pi + 2*pi/length(followers), length.out = length(followers))
+        out$x[followers] <- cen$cx + local_r * cos(ang)
+        out$y[followers] <- cen$cy + local_r * sin(ang)
+      }
+    }
+    out
+  }
+
+  .ama705_cluster_leader_edges <- function(nodes, edges) {
+    # Build the clustered network as a strict star per FLCA-MA-SIL cluster:
+    # the highest value2/value node in each carac is the cluster leader, and
+    # every other node in that carac gets exactly one edge to that leader.
+    nd <- as.data.frame(nodes, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!nrow(nd)) {
+      return(data.frame(Leader = character(), Follower = character(), WCD = numeric(),
+                        edge_type = character(), stringsAsFactors = FALSE))
+    }
+    nd$name <- .ama705_chr(nd$name)
+    nd$carac <- suppressWarnings(as.integer(gsub("[^0-9-]", "", .ama705_chr(nd$carac))))
+    nd$carac[!is.finite(nd$carac) | is.na(nd$carac)] <- 1L
+    nd$value <- .ama705_num(nd$value, 1)
+    if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+    nd$value2 <- .ama705_num(nd$value2, nd$value)
+    nd$rank <- if ("rank" %in% names(nd)) suppressWarnings(as.integer(nd$rank)) else seq_len(nrow(nd))
+    bad_rank <- !is.finite(nd$rank) | is.na(nd$rank)
+    if (any(bad_rank)) nd$rank[bad_rank] <- seq_len(nrow(nd))[bad_rank]
+
+    ed <- as.data.frame(edges, stringsAsFactors = FALSE, check.names = FALSE)
+    if (nrow(ed)) {
+      if (all(c("Source", "Target") %in% names(ed)) && !all(c("Leader", "Follower") %in% names(ed))) {
+        names(ed)[match(c("Source", "Target"), names(ed))] <- c("Leader", "Follower")
+      }
+      if ("follower" %in% names(ed) && !"Follower" %in% names(ed)) names(ed)[names(ed) == "follower"] <- "Follower"
+      if (!"WCD" %in% names(ed)) {
+        wname <- intersect(c("weight", "value", "Count", "count", "n"), names(ed))[1]
+        ed$WCD <- if (length(wname)) ed[[wname]] else 1
+      }
+      if (all(c("Leader", "Follower", "WCD") %in% names(ed))) {
+        ed <- ed[, c("Leader", "Follower", "WCD"), drop = FALSE]
+        ed$Leader <- .ama705_chr(ed$Leader)
+        ed$Follower <- .ama705_chr(ed$Follower)
+        ed$WCD <- .ama705_num(ed$WCD, 1)
+        ed <- ed[ed$Leader %in% nd$name & ed$Follower %in% nd$name & ed$Leader != ed$Follower & ed$WCD > 0, , drop = FALSE]
+      } else {
+        ed <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
+      }
+    } else {
+      ed <- data.frame(Leader = character(), Follower = character(), WCD = numeric(), stringsAsFactors = FALSE)
+    }
+
+    get_pair_w <- function(a, b) {
+      if (!nrow(ed)) return(NA_real_)
+      jj <- which((ed$Leader == a & ed$Follower == b) | (ed$Leader == b & ed$Follower == a))
+      if (!length(jj)) return(NA_real_)
+      max(ed$WCD[jj], na.rm = TRUE)
+    }
+
+    out <- list()
+    q <- 0L
+    for (cc in sort(unique(nd$carac))) {
+      ii <- which(nd$carac == cc)
+      ii <- ii[order(-nd$value2[ii], -nd$value[ii], nd$rank[ii], nd$name[ii])]
+      if (length(ii) <= 1L) next
+      leader <- nd$name[ii[1]]
+      followers <- nd$name[ii[-1]]
+      for (ff in followers) {
+        w <- get_pair_w(leader, ff)
+        et <- "observed leader-follower edge"
+        if (!is.finite(w) || is.na(w) || w <= 0) {
+          w <- 1
+          et <- "cluster membership edge"
+        }
+        q <- q + 1L
+        out[[q]] <- data.frame(Leader = leader, Follower = ff, WCD = w,
+                               carac = cc, edge_type = et, stringsAsFactors = FALSE)
+      }
+    }
+    if (!length(out)) {
+      return(data.frame(Leader = character(), Follower = character(), WCD = numeric(),
+                        carac = integer(), edge_type = character(), stringsAsFactors = FALSE))
+    }
+    ans <- do.call(rbind, out)
+    ans <- ans[order(ans$carac, match(ans$Leader, nd$name), match(ans$Follower, nd$name)), , drop = FALSE]
+    rownames(ans) <- NULL
+    ans
+  }
+
+  .ama705_cluster_network_widget <- function() {
+    z <- .ama705_payload()
+    nd <- .ama705_cluster_positions(z$nodes)
+    ed <- .ama705_cluster_leader_edges(nd, z$edges)
+    mx <- max(nd$value, na.rm = TRUE); if (!is.finite(mx) || mx <= 0) mx <- 1
+    groups <- paste0("Cluster ", nd$carac)
+    vn_nodes <- data.frame(
+      id = .ama705_chr(nd$name),
+      label = paste0(nd$rank, ". ", .ama705_chr(nd$name)),
+      group = .ama705_chr(groups),
+      value = as.numeric(pmax(18, 26 + 66 * sqrt(pmax(nd$value, 0)) / sqrt(mx) + ifelse(nd$cluster_leader, 14, 0))),
+      x = as.numeric(nd$x),
+      y = as.numeric(nd$y),
+      fixed = TRUE,
+      borderWidth = ifelse(nd$cluster_leader, 5, 2),
+      title = .ama705_escape(paste0("Rank: ", nd$rank,
+                                    "<br>Name: ", nd$name,
+                                    "<br>Cluster: ", nd$carac,
+                                    "<br>Role: ", ifelse(nd$cluster_leader, "cluster leader", "follower"),
+                                    "<br>value: ", sprintf("%.2f", nd$value),
+                                    "<br>value2: ", sprintf("%.2f", nd$value2),
+                                    "<br>SS: ", sprintf("%.2f", nd$ssi))),
+      stringsAsFactors = FALSE
+    )
+    vn_edges <- data.frame(
+      # Arrow is follower -> leader, so each follower points to its respective cluster leader.
+      from = .ama705_chr(ed$Follower),
+      to = .ama705_chr(ed$Leader),
+      value = as.numeric(pmax(1, ed$WCD)),
+      label = .ama705_chr(sprintf("%.0f", ed$WCD)),
+      title = .ama705_escape(paste0("Follower: ", ed$Follower,
+                                    "<br>Leader: ", ed$Leader,
+                                    "<br>Cluster: ", ed$carac,
+                                    "<br>WCD=", sprintf("%.2f", ed$WCD),
+                                    "<br>", ed$edge_type)),
+      arrows = rep("to", nrow(ed)),
+      stringsAsFactors = FALSE
+    )
+    visNetwork::visNetwork(vn_nodes, vn_edges, width = "100%", height = "760px",
+                           main = "Clustered network: FLCA-MA-SIL Top20; each follower has one edge to its cluster leader") %>%
+      visNetwork::visNodes(shape = "dot",
+                            font = list(size = 24, face = "bold", color = "#111111", strokeWidth = 3)) %>%
+      visNetwork::visEdges(smooth = list(enabled = TRUE, type = "curvedCW", roundness = 0.18),
+                            font = list(size = 18, face = "bold", align = "middle"),
+                            color = list(color = "#777777", highlight = "#d62728")) %>%
+      visNetwork::visOptions(highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE),
+                              nodesIdSelection = TRUE,
+                              selectedBy = list(variable = "group", multiple = TRUE)) %>%
+      visNetwork::visPhysics(enabled = FALSE) %>%
+      visNetwork::visLayout(randomSeed = 706)
+  }
+
+  .ama705_draw_cluster_network_png <- function() {
+    z <- .ama705_payload()
+    nd <- .ama705_cluster_positions(z$nodes)
+    ed <- .ama705_cluster_leader_edges(nd, z$edges)
+    cols <- grDevices::hcl.colors(max(3, length(unique(nd$carac))), "Dark 3")
+    clv <- sort(unique(nd$carac))
+    bg <- cols[as.integer(factor(nd$carac, levels = clv))]
+    xlim <- range(nd$x, na.rm = TRUE) + c(-240, 240)
+    ylim <- range(nd$y, na.rm = TRUE) + c(-200, 200)
+    par(mar = c(1, 1, 4, 1))
+    plot(nd$x, nd$y, type = "n", axes = FALSE, xlab = "", ylab = "",
+         main = "Clustered network PNG: each follower points to its FLCA-MA-SIL cluster leader",
+         cex.main = 1.65, font.main = 2, xlim = xlim, ylim = ylim, asp = 1)
+    for (cc in clv) {
+      sub <- nd[nd$carac == cc, , drop = FALSE]
+      if (nrow(sub)) {
+        cx <- sub$x[which(sub$cluster_leader)[1]]
+        cy <- sub$y[which(sub$cluster_leader)[1]]
+        if (!is.finite(cx) || !is.finite(cy)) { cx <- mean(sub$x, na.rm = TRUE); cy <- mean(sub$y, na.rm = TRUE) }
+        r <- max(sqrt((sub$x - cx)^2 + (sub$y - cy)^2), 80, na.rm = TRUE) + 75
+        symbols(cx, cy, circles = r, inches = FALSE, add = TRUE,
+                bg = grDevices::adjustcolor(cols[match(cc, clv)], alpha.f = 0.10),
+                fg = grDevices::adjustcolor(cols[match(cc, clv)], alpha.f = 0.70), lwd = 2)
+        text(cx, cy + r + 35, labels = paste("Cluster", cc), cex = 1.15, font = 2,
+             col = cols[match(cc, clv)])
+      }
+    }
+    if (nrow(ed)) {
+      mxw <- max(ed$WCD, na.rm = TRUE); if (!is.finite(mxw) || mxw <= 0) mxw <- 1
+      for (i in seq_len(nrow(ed))) {
+        a <- match(ed$Leader[i], nd$name)
+        b <- match(ed$Follower[i], nd$name)
+        if (!is.na(a) && !is.na(b)) {
+          # Arrow is follower -> leader.
+          arrows(nd$x[b], nd$y[b], nd$x[a], nd$y[a], length = 0.08,
+                 lwd = 1.5 + 2 * ed$WCD[i] / mxw, col = "grey45")
+          text((nd$x[a] + nd$x[b]) / 2, (nd$y[a] + nd$y[b]) / 2,
+               labels = sprintf("%.0f", ed$WCD[i]), cex = 0.75, font = 2, col = "grey30")
+        }
+      }
+    }
+    cexv <- 1.5 + 3.0 * sqrt(pmax(nd$value, 0)) / max(sqrt(pmax(nd$value, 0)), na.rm = TRUE)
+    cexv[nd$cluster_leader] <- cexv[nd$cluster_leader] + 0.8
+    points(nd$x, nd$y, pch = 21, bg = bg, cex = cexv, lwd = ifelse(nd$cluster_leader, 4, 2))
+    text(nd$x, nd$y, labels = nd$rank, cex = 0.95, font = 2)
+    text(nd$x + 28, nd$y - 28, labels = nd$name, cex = 0.88, font = 2, adj = c(0, 1))
+    legend("bottomleft", legend = paste("Cluster", clv),
+           pt.bg = cols[seq_along(clv)], pch = 21, bty = "n", cex = 1.0, text.font = 2)
+    legend("topright", legend = c("larger border = cluster leader", "arrow: follower -> leader"),
+           bty = "n", cex = 1.0, text.font = 2)
+  }
+
+  .ama705_draw_network_png <- function() {
+    z <- .ama705_payload()
+    nd <- z$nodes
+    ed <- .ama705_one_link_edges(nd, z$edges)
+    n <- nrow(nd)
+    theta <- seq(pi/2, pi/2 - 2*pi + 2*pi/n, length.out = n)
+    xy <- data.frame(name = nd$name, x = cos(theta), y = sin(theta), stringsAsFactors = FALSE)
+    rownames(xy) <- xy$name
+    cols <- grDevices::hcl.colors(max(3, length(unique(nd$carac))), "Dark 3")
+    bg <- cols[as.integer(factor(nd$carac))]
+    par(mar = c(1, 1, 4, 1))
+    plot(xy$x, xy$y, type = "n", axes = FALSE, xlab = "", ylab = "",
+         main = "Interactive network PNG: FLCA-MA-SIL Top20; one primary edge per follower",
+         cex.main = 1.7, font.main = 2, xlim = c(-1.4, 1.4), ylim = c(-1.3, 1.3))
+    if (nrow(ed)) {
+      for (i in seq_len(nrow(ed))) {
+        arrows(xy[ed$Leader[i], "x"], xy[ed$Leader[i], "y"], xy[ed$Follower[i], "x"], xy[ed$Follower[i], "y"],
+               length = 0.08, lwd = 1.5 + 2 * ed$WCD[i] / max(ed$WCD, na.rm = TRUE), col = "grey55")
+      }
+    }
+    cexv <- 1.5 + 3.0 * sqrt(pmax(nd$value, 0)) / max(sqrt(pmax(nd$value, 0)), na.rm = TRUE)
+    points(xy$x, xy$y, pch = 21, bg = bg, cex = cexv, lwd = 2)
+    text(xy$x, xy$y, labels = nd$rank, cex = 0.95, font = 2)
+    text(1.14 * xy$x, 1.14 * xy$y, labels = nd$name, cex = 0.9, font = 2)
+    legend("bottomleft", legend = paste("Cluster", sort(unique(nd$carac))),
+           pt.bg = cols[seq_along(sort(unique(nd$carac)))], pch = 21, bty = "n", cex = 1.0, text.font = 2)
+  }
+
+  output$tbl_ama_ref_top20_check <- renderPrint({
+    tryCatch({
+      cat("Top 20 check list\n")
+      cat("This table is the FLCA-MA-SIL Top20 used by Network, SSplot, and Kano. Numeric values are displayed to 2 decimals.\n")
+      z <- .ama705_payload()
+      keep <- intersect(c("rank", "name", "value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1"), names(z$nodes))
+      print(.ama705_fmt_table(z$nodes[, keep, drop = FALSE], max_rows = 20), row.names = FALSE, right = FALSE)
+    }, error = function(e) {
+      cat("Top 20 check list\n")
+      cat("Run AMA author/journal extraction first. ", conditionMessage(e), "\n", sep = "")
+    })
+  })
+
+  output$tbl_ama_ref_nodes <- renderPrint({
+    tryCatch({
+      z <- .ama705_payload()
+      keep <- intersect(c("rank", "name", "value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1"), names(z$nodes))
+      print(.ama705_fmt_table(z$nodes[, keep, drop = FALSE], max_rows = 20), row.names = FALSE, right = FALSE)
+    }, error = function(e) print(data.frame(Message = conditionMessage(e)), row.names = FALSE, right = FALSE))
+  })
+
+  output$tbl_ama_ref_edges <- renderPrint({
+    tryCatch({
+      z <- .ama705_payload()
+      print(.ama705_fmt_table(z$edges, max_rows = 120), row.names = FALSE, right = FALSE)
+    }, error = function(e) print(data.frame(Message = conditionMessage(e)), row.names = FALSE, right = FALSE))
+  })
+
+  output$vn_ama_ref <- visNetwork::renderVisNetwork({
+    .ama705_network_widget()
+  })
+
+  output$vn_ama_ref_cluster <- visNetwork::renderVisNetwork({
+    .ama705_cluster_network_widget()
+  })
+
+  output$plt_ama_ref_ss <- renderPlot({
+    tryCatch(.ama705_draw_ssplot(font_scale = 1.55),
+             error = function(e) { plot.new(); text(0.5, 0.5, paste("SSplot error:", conditionMessage(e)), col = "red", cex = 1.25, font = 2) })
+  }, height = 900)
+
+  output$plt_ama_ref_kano <- renderPlot({
+    tryCatch(.ama705_draw_kano(),
+             error = function(e) { plot.new(); text(0.5, 0.5, paste("Kano plot error:", conditionMessage(e)), col = "red", cex = 1.25, font = 2) })
+  }, height = 1250)
+
+  output$dl_ama_ref_network_png <- downloadHandler(
+    filename = function() paste0("ama_author_journal_network_", Sys.Date(), ".png"),
+    content = function(file) {
+      grDevices::png(file, width = 2600, height = 2200, res = 240)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      .ama705_draw_network_png()
+    }
+  )
+
+  output$dl_ama_ref_network_html <- downloadHandler(
+    filename = function() paste0("ama_author_journal_interactive_network_", Sys.Date(), ".html"),
+    content = function(file) {
+      widget <- .ama705_network_widget()
+      htmlwidgets::saveWidget(widget, file = file, selfcontained = TRUE)
+    }
+  )
+
+  output$dl_ama_ref_cluster_network_png <- downloadHandler(
+    filename = function() paste0("ama_author_journal_cluster_network_", Sys.Date(), ".png"),
+    content = function(file) {
+      grDevices::png(file, width = 2800, height = 2300, res = 240)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      .ama705_draw_cluster_network_png()
+    }
+  )
+
+  output$dl_ama_ref_cluster_network_html <- downloadHandler(
+    filename = function() paste0("ama_author_journal_cluster_network_", Sys.Date(), ".html"),
+    content = function(file) {
+      widget <- .ama705_cluster_network_widget()
+      htmlwidgets::saveWidget(widget, file = file, selfcontained = TRUE)
+    }
+  )
+
+  output$dl_ama_ref_ss_png <- downloadHandler(
+    filename = function() paste0("ama_author_journal_ssplot_", Sys.Date(), ".png"),
+    content = function(file) {
+      grDevices::png(file, width = 3400, height = 2600, res = 260)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      .ama705_draw_ssplot(font_scale = 1.65)
+    }
+  )
+
+  output$dl_ama_ref_kano_png <- downloadHandler(
+    filename = function() paste0("ama_author_journal_kano_", Sys.Date(), ".png"),
+    content = function(file) {
+      grDevices::png(file, width = 3200, height = 4200, res = 260)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      .ama705_draw_kano()
+    }
+  )
+
+
+
+  # ============================================================
+  # AMA Author AAC tab: first/last author extraction only
+  # ============================================================
+  ama_author_aac_status <- reactiveVal("Ready: paste/upload AMA/PubMed/Google Scholar/NCKU Scopus rows, then click Run AMA author AAC (1st+Last only).")
+  ama_author_aac_results_val <- reactiveVal(NULL)
+
+  output$ama_author_aac_status <- renderText({
+    as.character(ama_author_aac_status() %||% "")
+  })
+
+  .ama_author_fl_clean_author <- function(x) {
+    x <- trimws(.ama705_chr(x))
+    x <- x[!is.na(x) & nzchar(x)]
+    x <- x[vapply(x, .ref_valid_node, logical(1))]
+    unique(x)
+  }
+
+
+  .ama_author_force_two_clusters_if_one <- function(nd) {
+    # Keep AMA Author AAC SSplot/Kano interpretable when FLCA returns only one cluster.
+    # This mirrors flca_ms_sil_module.R split_cluster_if_needed(): if only one
+    # cluster exists, split the ranked nodes into two value-based halves.
+    if (is.null(nd) || !is.data.frame(nd) || nrow(nd) < 2L || !("carac" %in% names(nd))) return(nd)
+    car <- trimws(as.character(nd$carac))
+    car <- car[!is.na(car) & nzchar(car) & toupper(car) != "NA"]
+    if (length(unique(car)) <= 1L) {
+      score <- if ("value2" %in% names(nd)) nd$value2 else if ("value" %in% names(nd)) nd$value else rep(0, nrow(nd))
+      score <- suppressWarnings(as.numeric(score)); score[!is.finite(score)] <- 0
+      v1 <- if ("value" %in% names(nd)) suppressWarnings(as.numeric(nd$value)) else rep(0, nrow(nd))
+      v1[!is.finite(v1)] <- 0
+      nm <- if ("name" %in% names(nd)) as.character(nd$name) else as.character(seq_len(nrow(nd)))
+      ord <- order(-score, -v1, nm)
+      split_index <- ceiling(length(ord) / 2)
+      nd$carac <- 2L
+      nd$carac[ord[seq_len(split_index)]] <- 1L
+    }
+    nd$carac <- as.integer(factor(as.character(nd$carac), levels = unique(as.character(nd$carac))))
+    nd
+  }
+
+  .ama_author_first_last_wide <- function(wide) {
+    if (is.null(wide) || !is.data.frame(wide) || !nrow(wide)) return(data.frame())
+    author_cols <- grep("^Author_", names(wide), value = TRUE)
+    if (!length(author_cols)) return(data.frame())
+    rows <- lapply(seq_len(nrow(wide)), function(i) {
+      a <- unlist(wide[i, author_cols, drop = FALSE], use.names = FALSE)
+      a <- .ama_author_fl_clean_author(a)
+      first <- if (length(a) >= 1L) a[1] else ""
+      last  <- if (length(a) >= 2L) a[length(a)] else ""
+      data.frame(reference_no = i, FirstAuthor = first, LastAuthor = last, stringsAsFactors = FALSE, check.names = FALSE)
+    })
+    out <- do.call(rbind, rows)
+    out <- out[nzchar(out$FirstAuthor) | nzchar(out$LastAuthor), , drop = FALSE]
+    rownames(out) <- NULL
+    out
+  }
+
+  .ama_author_first_last_nodes_edges <- function(fl_wide) {
+    if (is.null(fl_wide) || !is.data.frame(fl_wide) || !nrow(fl_wide)) {
+      stop("No first/last authors were detected.", call. = FALSE)
+    }
+    row_terms <- lapply(seq_len(nrow(fl_wide)), function(i) {
+      unique(.ama_author_fl_clean_author(c(fl_wide$FirstAuthor[i], fl_wide$LastAuthor[i])))
+    })
+    row_terms <- row_terms[lengths(row_terms) > 0]
+    if (!length(row_terms)) stop("No valid first/last-author terms after cleaning.", call. = FALSE)
+    tb <- sort(table(unlist(row_terms, use.names = FALSE)), decreasing = TRUE)
+    nodes <- data.frame(name = names(tb), value = as.numeric(tb), term_type = "Author",
+                        stringsAsFactors = FALSE, check.names = FALSE)
+    nodes$value2 <- nodes$value
+    nodes$carac <- 1L
+
+    edge_list <- list(); kk <- 0L
+    for (i in seq_len(nrow(fl_wide))) {
+      fa <- .ama_author_fl_clean_author(fl_wide$FirstAuthor[i])
+      la <- .ama_author_fl_clean_author(fl_wide$LastAuthor[i])
+      if (length(fa) && length(la) && !identical(fa[1], la[1])) {
+        kk <- kk + 1L
+        edge_list[[kk]] <- data.frame(Leader = fa[1], Follower = la[1], WCD = 1,
+                                      stringsAsFactors = FALSE)
+      }
+    }
+    if (length(edge_list)) {
+      ed0 <- dplyr::bind_rows(edge_list)
+      edges <- stats::aggregate(WCD ~ Leader + Follower, data = ed0, FUN = sum)
+      edges <- edges[order(-edges$WCD, edges$Leader, edges$Follower), , drop = FALSE]
+    } else {
+      edges <- data.frame(Leader = character(0), Follower = character(0), WCD = numeric(0), stringsAsFactors = FALSE)
+    }
+    list(nodes = nodes, edges = edges, rows_terms = row_terms)
+  }
+
+  .ama_author_aac_run_frequency_top20 <- function(nodes, edges) {
+    # PATCH 2026-06-02:
+    # For the AMA Author AAC tab, "Top20 by first/last authors" should mean
+    # frequency-first Top20 from the cleaned first/last bylines.  FLCA-MA-SIL
+    # is still used for cluster labels when available, but the high-frequency
+    # authors are no longer dropped by major-sampling.  This is important for
+    # one-initial names such as "W Chou" that can be legitimate last authors.
+    if (!is.data.frame(nodes) || !nrow(nodes)) stop("No first/last-author nodes available.", call. = FALSE)
+    if (!is.data.frame(edges)) edges <- data.frame(Leader = character(0), Follower = character(0), WCD = numeric(0))
+
+    nd_all <- as.data.frame(nodes, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!"name" %in% names(nd_all)) stop("nodes must contain name.", call. = FALSE)
+    if (!"value" %in% names(nd_all)) nd_all$value <- 1
+    nd_all$name <- trimws(as.character(nd_all$name))
+    nd_all$value <- suppressWarnings(as.numeric(nd_all$value))
+    nd_all$value[!is.finite(nd_all$value)] <- 1
+    nd_all <- nd_all[nzchar(nd_all$name), , drop = FALSE]
+    nd_all <- nd_all[!duplicated(nd_all$name), , drop = FALSE]
+    if (!"term_type" %in% names(nd_all)) nd_all$term_type <- "Author"
+
+    ed_all <- as.data.frame(edges, stringsAsFactors = FALSE, check.names = FALSE)
+    if ("follower" %in% names(ed_all) && !("Follower" %in% names(ed_all))) names(ed_all)[names(ed_all) == "follower"] <- "Follower"
+    if (!("Leader" %in% names(ed_all)) && "Source" %in% names(ed_all)) names(ed_all)[names(ed_all) == "Source"] <- "Leader"
+    if (!("Follower" %in% names(ed_all)) && "Target" %in% names(ed_all)) names(ed_all)[names(ed_all) == "Target"] <- "Follower"
+    if (!("WCD" %in% names(ed_all))) ed_all$WCD <- 1
+    if (!all(c("Leader", "Follower", "WCD") %in% names(ed_all))) {
+      ed_all <- data.frame(Leader = character(0), Follower = character(0), WCD = numeric(0), stringsAsFactors = FALSE)
+    }
+    ed_all$Leader <- trimws(as.character(ed_all$Leader))
+    ed_all$Follower <- trimws(as.character(ed_all$Follower))
+    ed_all$WCD <- suppressWarnings(as.numeric(ed_all$WCD))
+    ed_all$WCD[!is.finite(ed_all$WCD)] <- 1
+    ed_all <- ed_all[nzchar(ed_all$Leader) & nzchar(ed_all$Follower) & ed_all$Leader != ed_all$Follower,
+                     c("Leader", "Follower", "WCD"), drop = FALSE]
+    ed_all <- ed_all[ed_all$Leader %in% nd_all$name & ed_all$Follower %in% nd_all$name, , drop = FALSE]
+
+    # Incident edge strength as value2.
+    if (nrow(ed_all) > 0) {
+      strength_df <- rbind(
+        data.frame(name = ed_all$Leader, value2 = ed_all$WCD, stringsAsFactors = FALSE),
+        data.frame(name = ed_all$Follower, value2 = ed_all$WCD, stringsAsFactors = FALSE)
+      )
+      strength_df <- stats::aggregate(value2 ~ name, strength_df, sum)
+      nd_all$value2 <- strength_df$value2[match(nd_all$name, strength_df$name)]
+      nd_all$value2[!is.finite(nd_all$value2) | is.na(nd_all$value2)] <- nd_all$value[!is.finite(nd_all$value2) | is.na(nd_all$value2)]
+    } else {
+      nd_all$value2 <- nd_all$value
+    }
+
+    # FLCA-MA-SIL cluster labels on the full first/last network, if available.
+    cluster_map <- NULL
+    if (exists("run_flca_ms_sil_internal", mode = "function") && nrow(ed_all) > 0 && nrow(nd_all) >= 3) {
+      full_flca <- tryCatch(
+        run_flca_ms_sil_internal(nd_all, ed_all,
+                                 cfg = list(top_clusters = 5, base_per_cluster = 4, target_n = 20),
+                                 verbose = FALSE),
+        error = function(e) NULL
+      )
+      if (!is.null(full_flca) && is.data.frame(full_flca$nodes_full) &&
+          all(c("name", "carac") %in% names(full_flca$nodes_full))) {
+        cluster_map <- full_flca$nodes_full[, c("name", "carac"), drop = FALSE]
+      } else if (!is.null(full_flca) && is.data.frame(full_flca$nodes) &&
+                 all(c("name", "carac") %in% names(full_flca$nodes))) {
+        cluster_map <- full_flca$nodes[, c("name", "carac"), drop = FALSE]
+      }
+    }
+    if (!is.null(cluster_map) && nrow(cluster_map)) {
+      nd_all$carac <- cluster_map$carac[match(nd_all$name, cluster_map$name)]
+    }
+    if (!"carac" %in% names(nd_all) || all(is.na(nd_all$carac))) nd_all$carac <- NA_integer_
+
+    # Fallback cluster labels by the highest-count leaders.
+    if (any(is.na(nd_all$carac))) {
+      seeds <- nd_all$name[order(-nd_all$value, -nd_all$value2, nd_all$name)]
+      seeds <- utils::head(seeds, min(5L, length(seeds)))
+      for (ii in which(is.na(nd_all$carac))) {
+        nm <- nd_all$name[ii]
+        hit <- ed_all[(ed_all$Leader == nm & ed_all$Follower %in% seeds) |
+                        (ed_all$Follower == nm & ed_all$Leader %in% seeds), , drop = FALSE]
+        if (nrow(hit) > 0) {
+          hit$seed <- ifelse(hit$Leader %in% seeds, hit$Leader, hit$Follower)
+          hit <- hit[order(-hit$WCD), , drop = FALSE]
+          nd_all$carac[ii] <- match(hit$seed[1], seeds)
+        }
+      }
+      still <- which(is.na(nd_all$carac))
+      if (length(still)) nd_all$carac[still] <- ((seq_along(still) - 1L) %% max(1L, length(seeds))) + 1L
+    }
+
+    nd_all$carac <- as.integer(factor(as.character(nd_all$carac), levels = unique(as.character(nd_all$carac))))
+    nd_all <- .ama_author_force_two_clusters_if_one(nd_all)
+    nd_all <- nd_all[order(-nd_all$value, -nd_all$value2, nd_all$name), , drop = FALSE]
+    nd <- utils::head(nd_all, 20)
+    nd <- .ama_author_force_two_clusters_if_one(nd)
+    selected <- as.character(nd$name)
+    ed <- ed_all[ed_all$Leader %in% selected & ed_all$Follower %in% selected, , drop = FALSE]
+
+    nd$ssi <- 0; nd$a_i <- 0; nd$b_i <- 0; nd$a_star1 <- 0
+    if (exists("compute_silhouette_df", mode = "function") && nrow(ed) > 0 && length(unique(nd$carac)) >= 2) {
+      sil_df <- tryCatch({
+        ed2 <- ed
+        if ("Follower" %in% names(ed2) && !("follower" %in% names(ed2))) ed2$follower <- ed2$Follower
+        compute_silhouette_df(nd, ed2)
+      }, error = function(e) NULL)
+      if (is.data.frame(sil_df) && nrow(sil_df) && "name" %in% names(sil_df)) {
+        sx <- match(nd$name, as.character(sil_df$name))
+        for (cc in c("ssi", "sil_width", "a_i", "b_i", "a_star1", "a_star")) {
+          if (cc %in% names(sil_df)) {
+            val <- suppressWarnings(as.numeric(sil_df[[cc]][sx]))
+            val[!is.finite(val)] <- 0
+            if (cc == "sil_width") nd$ssi <- val
+            else if (cc == "a_star") nd$a_star1 <- val
+            else nd[[cc]] <- val
+          }
+        }
+      }
+    }
+    nd$SSi <- nd$ssi
+    nd$a_star <- nd$a_star1
+    nd$rank <- seq_len(nrow(nd))
+    rownames(nd) <- NULL
+    rownames(ed) <- NULL
+    list(nodes = nd, edges = ed, engine = "FLCA-MA-SIL cluster labels + first/last frequency Top20; one-cluster result forced to 2 clusters")
+  }
+
+  .ama_author_aac_payload <- function() {
+    r <- ama_author_aac_results_val()
+    if (is.null(r) || is.null(r$nodes) || !is.data.frame(r$nodes)) {
+      stop("No AMA Author AAC result yet. Paste/upload normalized records, then click Run AMA author AAC (1st+Last only).", call. = FALSE)
+    }
+    p <- .ref_sanitize_plot_payload(r$nodes, r$edges)
+    nd <- p$nodes
+    ed <- p$edges
+    if (!"rank" %in% names(nd)) nd$rank <- seq_len(nrow(nd))
+    if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+    if (!"ssi" %in% names(nd)) nd$ssi <- 0
+    if (!"a_i" %in% names(nd)) nd$a_i <- 0
+    if (!"b_i" %in% names(nd)) nd$b_i <- 0
+    if (!"a_star1" %in% names(nd)) nd$a_star1 <- 0
+    nd$value <- .ama705_num(nd$value, 1)
+    nd$value2 <- .ama705_num(nd$value2, nd$value)
+    nd$carac <- as.integer(.ama705_num(nd$carac, 1))
+    nd$ssi <- .ama705_num(nd$ssi, 0)
+    nd$a_i <- .ama705_num(nd$a_i, 0)
+    nd$b_i <- .ama705_num(nd$b_i, 0)
+    nd$a_star1 <- .ama705_num(nd$a_star1, 0)
+    nd <- nd[order(-nd$value, -nd$value2, nd$name), , drop = FALSE]
+    nd <- utils::head(nd, 20)
+    nd$rank <- seq_len(nrow(nd))
+    ed <- ed[ed$Leader %in% nd$name & ed$Follower %in% nd$name, , drop = FALSE]
+    list(nodes = nd, edges = ed, raw = r)
+  }
+
+  .ama_author_aac_network_widget <- function() {
+    z <- .ama_author_aac_payload()
+    nd <- z$nodes
+    ed <- .ama705_one_link_edges(nd, z$edges)
+    mx <- max(nd$value, na.rm = TRUE); if (!is.finite(mx) || mx <= 0) mx <- 1
+    groups <- paste0("Cluster ", nd$carac)
+    vn_nodes <- data.frame(
+      id = .ama705_chr(nd$name), label = .ama705_chr(nd$name), group = .ama705_chr(groups),
+      value = as.numeric(pmax(12, 20 + 55 * sqrt(pmax(nd$value, 0)) / sqrt(mx))),
+      title = .ama705_escape(paste0("Rank: ", nd$rank, "<br>Name: ", nd$name,
+                                    "<br>Cluster: ", nd$carac,
+                                    "<br>First/last count: ", sprintf("%.2f", nd$value),
+                                    "<br>value2: ", sprintf("%.2f", nd$value2),
+                                    "<br>SS: ", sprintf("%.2f", nd$ssi))),
+      stringsAsFactors = FALSE
+    )
+    vn_edges <- data.frame(
+      from = .ama705_chr(ed$Leader), to = .ama705_chr(ed$Follower),
+      value = as.numeric(pmax(1, ed$WCD)), label = .ama705_chr(sprintf("%.0f", ed$WCD)),
+      title = .ama705_escape(paste0(ed$Leader, " -> ", ed$Follower, "<br>WCD=", sprintf("%.2f", ed$WCD))),
+      arrows = rep("to", nrow(ed)), stringsAsFactors = FALSE
+    )
+    visNetwork::visNetwork(vn_nodes, vn_edges, width = "100%", height = "760px",
+                           main = "AMA Author AAC: FLCA-MA-SIL Top20 from 1st/last authors only") %>%
+      visNetwork::visNodes(shape = "dot", font = list(size = 26, face = "bold", color = "#111111", strokeWidth = 3)) %>%
+      visNetwork::visEdges(smooth = list(enabled = TRUE, type = "dynamic"),
+                            font = list(size = 18, face = "bold", align = "middle"),
+                            color = list(color = "#888888", highlight = "#d62728")) %>%
+      visNetwork::visOptions(highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE),
+                              nodesIdSelection = TRUE,
+                              selectedBy = list(variable = "group", multiple = TRUE)) %>%
+      visNetwork::visPhysics(stabilization = TRUE, solver = "forceAtlas2Based") %>%
+      visNetwork::visLayout(randomSeed = 807)
+  }
+
+  .ama_author_aac_cluster_network_widget <- function() {
+    z <- .ama_author_aac_payload()
+    nd <- .ama705_cluster_positions(z$nodes)
+    ed <- .ama705_cluster_leader_edges(nd, z$edges)
+    mx <- max(nd$value, na.rm = TRUE); if (!is.finite(mx) || mx <= 0) mx <- 1
+    groups <- paste0("Cluster ", nd$carac)
+    vn_nodes <- data.frame(
+      id = .ama705_chr(nd$name), label = paste0(nd$rank, ". ", .ama705_chr(nd$name)), group = .ama705_chr(groups),
+      value = as.numeric(pmax(18, 26 + 66 * sqrt(pmax(nd$value, 0)) / sqrt(mx) + ifelse(nd$cluster_leader, 14, 0))),
+      x = as.numeric(nd$x), y = as.numeric(nd$y), fixed = TRUE,
+      borderWidth = ifelse(nd$cluster_leader, 5, 2),
+      title = .ama705_escape(paste0("Rank: ", nd$rank, "<br>Name: ", nd$name,
+                                    "<br>Cluster: ", nd$carac,
+                                    "<br>Role: ", ifelse(nd$cluster_leader, "cluster leader", "follower"),
+                                    "<br>First/last count: ", sprintf("%.2f", nd$value),
+                                    "<br>value2: ", sprintf("%.2f", nd$value2),
+                                    "<br>SS: ", sprintf("%.2f", nd$ssi))),
+      stringsAsFactors = FALSE
+    )
+    vn_edges <- data.frame(
+      from = .ama705_chr(ed$Follower), to = .ama705_chr(ed$Leader),
+      value = as.numeric(pmax(1, ed$WCD)), label = .ama705_chr(sprintf("%.0f", ed$WCD)),
+      title = .ama705_escape(paste0("Follower: ", ed$Follower, "<br>Leader: ", ed$Leader,
+                                    "<br>Cluster: ", ed$carac, "<br>WCD=", sprintf("%.2f", ed$WCD),
+                                    "<br>", ed$edge_type)),
+      arrows = rep("to", nrow(ed)), stringsAsFactors = FALSE
+    )
+    visNetwork::visNetwork(vn_nodes, vn_edges, width = "100%", height = "760px",
+                           main = "Clustered network: 1st/last-author Top20; each follower points to its cluster leader") %>%
+      visNetwork::visNodes(shape = "dot", font = list(size = 24, face = "bold", color = "#111111", strokeWidth = 3)) %>%
+      visNetwork::visEdges(smooth = list(enabled = TRUE, type = "curvedCW", roundness = 0.18),
+                            font = list(size = 18, face = "bold", align = "middle"),
+                            color = list(color = "#777777", highlight = "#d62728")) %>%
+      visNetwork::visOptions(highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE),
+                              nodesIdSelection = TRUE,
+                              selectedBy = list(variable = "group", multiple = TRUE)) %>%
+      visNetwork::visPhysics(enabled = FALSE) %>%
+      visNetwork::visLayout(randomSeed = 808)
+  }
+
+  .ama_author_aac_ss_inputs <- function() {
+    z <- .ama_author_aac_payload()
+    nd <- z$nodes
+    ed1 <- .ama705_one_link_edges(nd, z$edges)
+    nd$sil_width <- nd$ssi
+    nd$wsel <- NA_real_
+    nd$role <- NA_character_
+    nd$neighbor_name <- nd$name
+    nd$neighborC <- nd$carac
+    if (nrow(ed1)) {
+      for (i in seq_len(nrow(ed1))) {
+        j <- match(ed1$Follower[i], nd$name)
+        k <- match(ed1$Leader[i], nd$name)
+        if (!is.na(j)) {
+          nd$wsel[j] <- ed1$WCD[i]
+          nd$role[j] <- "follower"
+          nd$neighbor_name[j] <- ed1$Leader[i]
+          nd$neighborC[j] <- if (!is.na(k)) nd$carac[k] else nd$carac[j]
+        }
+      }
+    }
+    leaders <- tapply(seq_len(nrow(nd)), nd$carac, function(ii) ii[order(-nd$value2[ii], -nd$value[ii], nd$rank[ii])][1])
+    nd$role[as.integer(leaders)] <- "leader"
+    results <- .ama705_modularity_results(nd, z$edges)
+    list(sil_df = nd, nodes0 = nd, nodes = nd, results = results)
+  }
+
+  .ama_author_aac_draw_ssplot <- function(font_scale = 1.55) {
+    inp <- .ama_author_aac_ss_inputs()
+    if (!exists("render_panel", mode = "function")) stop("render_panel() not loaded from renderSSplot.R.", call. = FALSE)
+    .with_clean_ssplot_aac_labels({
+      render_panel(sil_df = inp$sil_df, nodes0 = inp$nodes0, results = inp$results,
+                   nodes = inp$nodes, top_n = nrow(inp$sil_df), font_scale = font_scale,
+                   aac_side = "left", neighbor_side = "right", neighbor_on_bar = TRUE,
+                   footer_label = "AMA Author AAC: first/last authors only")
+    })
+  }
+
+  .ama_author_aac_draw_kano <- function() {
+    z <- .ama_author_aac_payload()
+    nd <- z$nodes
+    ed <- .ama705_one_link_edges(nd, z$edges)
+    ok <- FALSE
+    if (exists("plot_kano_real", mode = "function")) {
+      ok <- tryCatch({
+        obj <- plot_kano_real(nodes = nd, edges = ed, title_txt = "Kano plot: 1st/last-author AAC Top20")
+        .ama705_print_kano_object(obj); TRUE
+      }, error = function(e) FALSE)
+    }
+    if (!ok && exists("kano_plot", mode = "function")) {
+      ok <- tryCatch({
+        obj <- kano_plot(nd, ed, title_txt = "Kano plot: 1st/last-author AAC Top20")
+        .ama705_print_kano_object(obj); TRUE
+      }, error = function(e) FALSE)
+    }
+    if (ok) return(invisible(TRUE))
+    nd$cluster <- factor(nd$carac)
+    p <- ggplot2::ggplot(nd, ggplot2::aes(x = value2, y = value, size = value, color = cluster, label = name)) +
+      ggplot2::geom_vline(xintercept = stats::median(nd$value2, na.rm = TRUE), linetype = "dashed", linewidth = 1.2, color = "red") +
+      ggplot2::geom_hline(yintercept = stats::median(nd$value, na.rm = TRUE), linetype = "dashed", linewidth = 1.2, color = "red") +
+      ggplot2::geom_point(alpha = 0.85) +
+      ggplot2::geom_text(fontface = "bold", size = 5.5, vjust = -1.05, show.legend = FALSE) +
+      ggplot2::scale_size_continuous(range = c(5, 18)) +
+      ggplot2::labs(title = "Kano plot: 1st/last-author AAC Top20",
+                    subtitle = "x = value2 (edge strength); y = first/last-author count; color = FLCA cluster",
+                    x = "value2", y = "1st/last-author count", color = "Cluster", size = "Count") +
+      ggplot2::theme_bw(base_size = 21) +
+      ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 28),
+                     plot.subtitle = ggplot2::element_text(face = "bold", size = 18),
+                     axis.title = ggplot2::element_text(face = "bold", size = 23),
+                     axis.text = ggplot2::element_text(face = "bold", size = 17),
+                     legend.title = ggplot2::element_text(face = "bold", size = 19),
+                     legend.text = ggplot2::element_text(face = "bold", size = 16),
+                     aspect.ratio = 1.35,
+                     plot.margin = ggplot2::margin(18, 24, 18, 24))
+    print(p)
+    invisible(TRUE)
+  }
+
+  .ama_author_aac_draw_network_png <- function() {
+    z <- .ama_author_aac_payload(); nd <- z$nodes; ed <- .ama705_one_link_edges(nd, z$edges)
+    n <- nrow(nd); theta <- seq(pi/2, pi/2 - 2*pi + 2*pi/n, length.out = n)
+    xy <- data.frame(name = nd$name, x = cos(theta), y = sin(theta), stringsAsFactors = FALSE); rownames(xy) <- xy$name
+    cols <- grDevices::hcl.colors(max(3, length(unique(nd$carac))), "Dark 3")
+    bg <- cols[as.integer(factor(nd$carac))]
+    par(mar = c(1, 1, 4, 1))
+    plot(xy$x, xy$y, type = "n", axes = FALSE, xlab = "", ylab = "",
+         main = "AMA Author AAC network PNG: 1st/last-author Top20", cex.main = 1.7, font.main = 2,
+         xlim = c(-1.4, 1.4), ylim = c(-1.3, 1.3))
+    if (nrow(ed)) for (i in seq_len(nrow(ed))) arrows(xy[ed$Leader[i], "x"], xy[ed$Leader[i], "y"], xy[ed$Follower[i], "x"], xy[ed$Follower[i], "y"], length = 0.08, lwd = 1.5 + 2 * ed$WCD[i] / max(ed$WCD, na.rm = TRUE), col = "grey55")
+    cexv <- 1.5 + 3.0 * sqrt(pmax(nd$value, 0)) / max(sqrt(pmax(nd$value, 0)), na.rm = TRUE)
+    points(xy$x, xy$y, pch = 21, bg = bg, cex = cexv, lwd = 2)
+    text(xy$x, xy$y, labels = nd$rank, cex = 0.95, font = 2)
+    text(1.14 * xy$x, 1.14 * xy$y, labels = nd$name, cex = 0.9, font = 2)
+    legend("bottomleft", legend = paste("Cluster", sort(unique(nd$carac))), pt.bg = cols[seq_along(sort(unique(nd$carac)))], pch = 21, bty = "n", cex = 1.0, text.font = 2)
+  }
+
+  .ama_author_aac_draw_cluster_network_png <- function() {
+    z <- .ama_author_aac_payload(); nd <- .ama705_cluster_positions(z$nodes); ed <- .ama705_cluster_leader_edges(nd, z$edges)
+    cols <- grDevices::hcl.colors(max(3, length(unique(nd$carac))), "Dark 3")
+    clv <- sort(unique(nd$carac)); bg <- cols[as.integer(factor(nd$carac, levels = clv))]
+    xlim <- range(nd$x, na.rm = TRUE) + c(-240, 240); ylim <- range(nd$y, na.rm = TRUE) + c(-200, 200)
+    par(mar = c(1, 1, 4, 1))
+    plot(nd$x, nd$y, type = "n", axes = FALSE, xlab = "", ylab = "",
+         main = "Clustered AMA Author AAC network: follower -> cluster leader", cex.main = 1.65, font.main = 2,
+         xlim = xlim, ylim = ylim, asp = 1)
+    for (cc in clv) {
+      sub <- nd[nd$carac == cc, , drop = FALSE]
+      cx <- sub$x[which(sub$cluster_leader)[1]]; cy <- sub$y[which(sub$cluster_leader)[1]]
+      if (!is.finite(cx) || !is.finite(cy)) { cx <- mean(sub$x, na.rm = TRUE); cy <- mean(sub$y, na.rm = TRUE) }
+      r <- max(sqrt((sub$x - cx)^2 + (sub$y - cy)^2), 80, na.rm = TRUE) + 75
+      symbols(cx, cy, circles = r, inches = FALSE, add = TRUE,
+              bg = grDevices::adjustcolor(cols[match(cc, clv)], alpha.f = 0.10),
+              fg = grDevices::adjustcolor(cols[match(cc, clv)], alpha.f = 0.70), lwd = 2)
+      text(cx, cy + r + 35, labels = paste("Cluster", cc), cex = 1.15, font = 2, col = cols[match(cc, clv)])
+    }
+    if (nrow(ed)) {
+      mxw <- max(ed$WCD, na.rm = TRUE); if (!is.finite(mxw) || mxw <= 0) mxw <- 1
+      for (i in seq_len(nrow(ed))) {
+        a <- match(ed$Leader[i], nd$name); b <- match(ed$Follower[i], nd$name)
+        if (!is.na(a) && !is.na(b)) arrows(nd$x[b], nd$y[b], nd$x[a], nd$y[a], length = 0.08, lwd = 1.5 + 2 * ed$WCD[i] / mxw, col = "grey45")
+      }
+    }
+    cexv <- 1.5 + 3.0 * sqrt(pmax(nd$value, 0)) / max(sqrt(pmax(nd$value, 0)), na.rm = TRUE)
+    cexv[nd$cluster_leader] <- cexv[nd$cluster_leader] + 0.8
+    points(nd$x, nd$y, pch = 21, bg = bg, cex = cexv, lwd = ifelse(nd$cluster_leader, 4, 2))
+    text(nd$x, nd$y, labels = nd$rank, cex = 0.95, font = 2)
+    text(nd$x + 28, nd$y - 28, labels = nd$name, cex = 0.88, font = 2, adj = c(0, 1))
+    legend("bottomleft", legend = paste("Cluster", clv), pt.bg = cols[seq_along(clv)], pch = 21, bty = "n", cex = 1.0, text.font = 2)
+    legend("topright", legend = c("larger border = cluster leader", "arrow: follower -> leader"), bty = "n", cex = 1.0, text.font = 2)
+  }
+
+  .ama_author_aac_highlights_df <- function() {
+    z <- .ama_author_aac_payload(); nd <- z$nodes; r <- z$raw
+    aac_value <- .compute_AAC(nd$value); if (!is.finite(aac_value)) aac_value <- 0
+    aac_value2 <- .compute_AAC(nd$value2); if (!is.finite(aac_value2)) aac_value2 <- 0
+    aac_ss <- .compute_AAC(nd$ssi); if (!is.finite(aac_ss)) aac_ss <- 0
+    aac_astar <- .compute_AAC(nd$a_star1); if (!is.finite(aac_astar)) aac_astar <- 0
+    art <- r$gs_articles %||% data.frame()
+    ps <- r$gs_profile_summary %||% data.frame()
+    if (is.data.frame(ps) && nrow(ps)) {
+      cit_all <- ps$All[match("Google Scholar profile citations", ps$Metric)]
+      h_all <- ps$All[match("Google Scholar profile h-index", ps$Metric)]
+      i10_all <- ps$All[match("Google Scholar profile i10-index", ps$Metric)]
+      metric_source <- "Google Scholar profile-reported"
+    } else if (is.data.frame(art) && nrow(art)) {
+      gm <- .ref_google_scholar_metrics(art)
+      h_all <- gm$All[match("h-index", gm$metric)]
+      i10_all <- gm$All[match("i10-index", gm$metric)]
+      cit_all <- gm$All[match("Citations", gm$metric)]
+      metric_source <- "Parsed normalized references"
+    } else {
+      h_all <- NA; i10_all <- NA; cit_all <- NA; metric_source <- "Not detected"
+    }
+    parsed_cit <- parsed_h <- parsed_i10 <- NA
+    fl_top_author <- fl_top_h <- fl_top_cit <- NA
+    if (is.data.frame(art) && nrow(art)) {
+      parsed_cites <- suppressWarnings(as.integer(art$citations)); parsed_cites[!is.finite(parsed_cites) | is.na(parsed_cites)] <- 0L
+      parsed_cit <- sum(parsed_cites, na.rm = TRUE)
+      parsed_h <- .ref_gs_h_index(parsed_cites)
+      parsed_i10 <- sum(parsed_cites >= 10L, na.rm = TRUE)
+      fl_hx <- tryCatch(.ref_google_scholar_author_hindex(art, basis = "first_last", since_year = r$gs_since_year %||% NULL), error = function(e) data.frame())
+      if (is.data.frame(fl_hx) && nrow(fl_hx)) {
+        fl_top_author <- as.character(fl_hx$author[1])
+        fl_top_h <- as.character(fl_hx$h_index[1])
+        fl_top_cit <- as.character(fl_hx$citations[1])
+      }
+    }
+    data.frame(
+      Metric = c("Citation metric source", "Profile-reported citations", "Profile-reported h-index", "Profile-reported i10-index",
+                 "Parsed normalized-reference citations", "Parsed normalized-reference h-index", "Parsed normalized-reference i10-index",
+                 "Top 1st/last-author reference h-index", "Top 1st/last-author reference author", "Top 1st/last-author reference citations",
+                 "Author AAC by first/last count", "Author AAC by edge strength (value2)",
+                 "AAC by SS", "AAC by a*", "Mean SS", "Clusters", "Top20 nodes", "First-last edges", "Engine"),
+      Value = c(as.character(metric_source), as.character(cit_all), as.character(h_all), as.character(i10_all),
+                as.character(parsed_cit), as.character(parsed_h), as.character(parsed_i10),
+                as.character(fl_top_h), as.character(fl_top_author), as.character(fl_top_cit),
+                sprintf("%.3f", aac_value), sprintf("%.3f", aac_value2),
+                sprintf("%.3f", aac_ss), sprintf("%.3f", aac_astar),
+                sprintf("%.3f", mean(nd$ssi, na.rm = TRUE)),
+                as.character(length(unique(nd$carac))), as.character(nrow(nd)), as.character(nrow(z$edges)),
+                as.character(r$engine %||% "")),
+      stringsAsFactors = FALSE, check.names = FALSE
+    )
+  }
+
+  observeEvent(input$run_ama_author_aac, {
+    .ama_console_log("Button pressed", "Run AMA author AAC (1st+Last only)", .button = "AMA Author AAC")
+    ama_author_aac_status("Processing: extracting first/last authors and running FLCA-MA-SIL...")
+    ama_author_aac_results_val(NULL)
+    tryCatch({
+      shiny::withProgress(message = "Running AMA Author AAC", value = 0, {
+        shiny::incProgress(0.10, detail = "Reading input")
+        txt <- .get_ama_input_text(ama_author_aac_status)
+        if (is.null(txt) || !nzchar(trimws(txt))) stop("No uploaded or pasted AMA/PubMed/Google Scholar/NCKU Scopus text was found.", call. = FALSE)
+        selected_sources_aac <- .ama_selected_ref_sources()
+        .ama_console_log("Parsers", paste(selected_sources_aac, collapse = ", "), .button = "AMA Author AAC")
+        refs <- .ama_split_refs_selected(txt, selected_sources_aac)
+        if (!length(refs)) stop("No usable selected-source normalized records were detected.", call. = FALSE)
+        shiny::incProgress(0.20, detail = "Parsing authors")
+        gs_profile_summary <- if ("google" %in% selected_sources_aac) tryCatch(.ref_google_scholar_profile_summary(txt), error = function(e) data.frame()) else data.frame()
+        gs_articles <- .ama_parse_articles_selected(txt, selected_sources_aac)
+        if (is.data.frame(gs_articles) && nrow(gs_articles) > 0) {
+          wide0 <- .ref_google_scholar_articles_to_wide(gs_articles)
+        } else {
+          if (!("ama" %in% selected_sources_aac)) stop("No normalized Google Scholar/NCKU rows were extracted, and AMA/PubMed parser is unchecked.", call. = FALSE)
+          wide0 <- .ref_to_wide_from_text_strict(txt)
+          wide_gs_force <- if ("google" %in% selected_sources_aac) tryCatch(.ref_to_wide_google_scholar_force(txt), error = function(e) data.frame()) else data.frame()
+          if (is.data.frame(wide_gs_force) && nrow(wide_gs_force) >= 2L) wide0 <- wide_gs_force
+        }
+        fl_wide <- .ama_author_first_last_wide(wide0)
+        if (!is.data.frame(fl_wide) || !nrow(fl_wide)) stop("No first/last authors were detected.", call. = FALSE)
+        shiny::incProgress(0.20, detail = "Building first-last author network")
+        ne <- .ama_author_first_last_nodes_edges(fl_wide)
+        shiny::incProgress(0.30, detail = "Running FLCA-MA-SIL Top20")
+        fl <- .ama_author_aac_run_frequency_top20(ne$nodes, ne$edges)
+        payload <- .ref_sanitize_plot_payload(fl$nodes, fl$edges)
+        nd <- payload$nodes; ed <- payload$edges
+        if (!is.data.frame(nd) || !nrow(nd)) stop("FLCA-MA-SIL returned no first/last-author Top20 nodes.", call. = FALSE)
+        ama_author_aac_results_val(list(
+          refs = refs, wide = fl_wide, nodes = nd, edges = ed, engine = fl$engine,
+          raw_nodes = ne$nodes, raw_edges = ne$edges, gs_articles = gs_articles,
+          gs_profile_summary = if (exists("gs_profile_summary", inherits = FALSE)) gs_profile_summary else data.frame(),
+          gs_since_year = as.integer(format(Sys.Date(), "%Y")) - 5L
+        ))
+        ama_author_aac_status(paste0("Completed via ", fl$engine, ": parsed ", length(refs),
+                                     " references; ", nrow(fl_wide), " first/last-author rows; ",
+                                     nrow(nd), " Top20 nodes; ", nrow(ed), " edges."))
+        showNotification("AMA Author AAC completed: first/last authors only.", type = "message")
+        updateTabsetPanel(session, "main_tabs", selected = "AMA Author AAC")
+        shiny::incProgress(0.20, detail = "Done")
+      })
+    }, error = function(e) {
+      .ama_console_log("Error", conditionMessage(e), .button = "AMA Author AAC")
+      ama_author_aac_status(paste("Error:", conditionMessage(e)))
+      showNotification(paste("AMA Author AAC failed:", conditionMessage(e)), type = "error", duration = 10)
+      ama_author_aac_results_val(NULL)
+    })
+  }, ignoreInit = TRUE)
+
+  output$tbl_ama_author_aac_highlights <- DT::renderDT({
+    df <- tryCatch(.ama_author_aac_highlights_df(), error = function(e) {
+      data.frame(Metric = "Status", Value = "Paste/upload normalized records and click Run AMA author AAC (1st+Last only).", stringsAsFactors = FALSE, check.names = FALSE)
+    })
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 12, dom = "t", scrollX = TRUE))
+  })
+
+
+  output$tbl_ama_author_aac_all_reference_hindex <- DT::renderDT({
+    r <- ama_author_aac_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    df <- .ref_google_scholar_all_reference_hindex(art, profile_summary = (if (!is.null(r)) r$gs_profile_summary %||% data.frame() else data.frame()))
+    DT::datatable(df, rownames = FALSE,
+                  options = list(dom = "t", scrollX = TRUE))
+  })
+
+  output$tbl_ama_author_aac_first_last_reference_hindex <- DT::renderDT({
+    r <- ama_author_aac_results_val()
+    art <- if (!is.null(r)) r$gs_articles %||% data.frame() else data.frame()
+    sy <- if (!is.null(r)) r$gs_since_year %||% (as.integer(format(Sys.Date(), "%Y")) - 5L) else (as.integer(format(Sys.Date(), "%Y")) - 5L)
+    df <- if (is.data.frame(art) && nrow(art)) {
+      .ref_google_scholar_author_hindex(art, basis = "first_last", since_year = sy)
+    } else {
+      .ref_empty_author_hindex_message()
+    }
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 15, scrollX = TRUE))
+  })
+
+  output$tbl_ama_author_aac_top20_check <- renderPrint({
+    tryCatch({
+      z <- .ama_author_aac_payload()
+      keep <- intersect(c("rank", "name", "value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1"), names(z$nodes))
+      cat("Top20 first/last-author check list\n")
+      cat("value = first/last-author occurrence count; value2 = incident edge strength; carac = FLCA cluster.\n")
+      print(.ama705_fmt_table(z$nodes[, keep, drop = FALSE], max_rows = 20), row.names = FALSE, right = FALSE)
+    }, error = function(e) cat("No AMA Author AAC result yet. ", conditionMessage(e), "\n", sep = ""))
+  })
+
+  output$tbl_ama_author_aac_nodes <- renderPrint({
+    tryCatch({ z <- .ama_author_aac_payload(); keep <- intersect(c("rank", "name", "value", "value2", "carac", "ssi", "a_i", "b_i", "a_star1"), names(z$nodes)); print(.ama705_fmt_table(z$nodes[, keep, drop = FALSE], max_rows = 20), row.names = FALSE, right = FALSE) },
+             error = function(e) print(data.frame(Message = conditionMessage(e)), row.names = FALSE, right = FALSE))
+  })
+  output$tbl_ama_author_aac_edges <- renderPrint({
+    tryCatch({ z <- .ama_author_aac_payload(); print(.ama705_fmt_table(z$edges, max_rows = 120), row.names = FALSE, right = FALSE) },
+             error = function(e) print(data.frame(Message = conditionMessage(e)), row.names = FALSE, right = FALSE))
+  })
+  output$tbl_ama_author_aac_wide <- renderPrint({
+    r <- ama_author_aac_results_val()
+    if (is.null(r) || !is.data.frame(r$wide)) {
+      print(data.frame(Message = "No AMA Author AAC result yet. Paste/upload normalized records, then click Run AMA author AAC (1st+Last only)."), row.names = FALSE, right = FALSE)
+    } else {
+      print(.ama705_fmt_table(r$wide, max_rows = 120), row.names = FALSE, right = FALSE)
+    }
+  })
+
+  output$vn_ama_author_aac <- visNetwork::renderVisNetwork({ .ama_author_aac_network_widget() })
+  output$vn_ama_author_aac_cluster <- visNetwork::renderVisNetwork({ .ama_author_aac_cluster_network_widget() })
+  output$plt_ama_author_aac_ss <- renderPlot({
+    tryCatch(.ama_author_aac_draw_ssplot(font_scale = 1.55),
+             error = function(e) { plot.new(); text(0.5, 0.5, paste("SSplot error:", conditionMessage(e)), col = "red", cex = 1.25, font = 2) })
+  }, height = 900)
+  output$plt_ama_author_aac_kano <- renderPlot({
+    tryCatch(.ama_author_aac_draw_kano(),
+             error = function(e) { plot.new(); text(0.5, 0.5, paste("Kano plot error:", conditionMessage(e)), col = "red", cex = 1.25, font = 2) })
+  }, height = 1250)
+
+  output$dl_ama_author_aac_network_png <- downloadHandler(
+    filename = function() paste0("ama_author_aac_network_", Sys.Date(), ".png"),
+    content = function(file) { grDevices::png(file, width = 2600, height = 2200, res = 240); on.exit(grDevices::dev.off(), add = TRUE); .ama_author_aac_draw_network_png() }
+  )
+  output$dl_ama_author_aac_network_html <- downloadHandler(
+    filename = function() paste0("ama_author_aac_interactive_network_", Sys.Date(), ".html"),
+    content = function(file) { htmlwidgets::saveWidget(.ama_author_aac_network_widget(), file = file, selfcontained = TRUE) }
+  )
+  output$dl_ama_author_aac_cluster_network_png <- downloadHandler(
+    filename = function() paste0("ama_author_aac_cluster_network_", Sys.Date(), ".png"),
+    content = function(file) { grDevices::png(file, width = 2800, height = 2300, res = 240); on.exit(grDevices::dev.off(), add = TRUE); .ama_author_aac_draw_cluster_network_png() }
+  )
+  output$dl_ama_author_aac_cluster_network_html <- downloadHandler(
+    filename = function() paste0("ama_author_aac_cluster_network_", Sys.Date(), ".html"),
+    content = function(file) { htmlwidgets::saveWidget(.ama_author_aac_cluster_network_widget(), file = file, selfcontained = TRUE) }
+  )
+  output$dl_ama_author_aac_ss_png <- downloadHandler(
+    filename = function() paste0("ama_author_aac_ssplot_", Sys.Date(), ".png"),
+    content = function(file) { grDevices::png(file, width = 3400, height = 2600, res = 260); on.exit(grDevices::dev.off(), add = TRUE); .ama_author_aac_draw_ssplot(font_scale = 1.65) }
+  )
+  output$dl_ama_author_aac_kano_png <- downloadHandler(
+    filename = function() paste0("ama_author_aac_kano_", Sys.Date(), ".png"),
+    content = function(file) { grDevices::png(file, width = 3200, height = 4200, res = 260); on.exit(grDevices::dev.off(), add = TRUE); .ama_author_aac_draw_kano() }
+  )
+  output$dl_ama_author_aac_nodes <- downloadHandler(
+    filename = function() paste0("ama_author_aac_nodes_", Sys.Date(), ".csv"),
+    content = function(file) { z <- .ama_author_aac_payload(); utils::write.csv(z$nodes, file, row.names = FALSE, fileEncoding = "UTF-8") }
+  )
+  output$dl_ama_author_aac_edges <- downloadHandler(
+    filename = function() paste0("ama_author_aac_edges_", Sys.Date(), ".csv"),
+    content = function(file) { z <- .ama_author_aac_payload(); utils::write.csv(z$edges, file, row.names = FALSE, fileEncoding = "UTF-8") }
+  )
+  output$dl_ama_author_aac_wide <- downloadHandler(
+    filename = function() paste0("ama_author_aac_first_last_wide_", Sys.Date(), ".csv"),
+    content = function(file) { r <- ama_author_aac_results_val(); utils::write.csv(r$wide, file, row.names = FALSE, fileEncoding = "UTF-8") }
+  )
+
   term_rx <- reactive({
     if (isTRUE(free_demo_run())) demo_term else input$term
   })
@@ -2183,7 +7776,377 @@ server <- function(input, output, session) {
     ip_addr = "..."
   )
 
+  # ---- BCa/EIS manual recompute stores ----
+  # Use explicit observeEvent + reactiveVal stores. This makes the Recompute button
+  # update outputs immediately and avoids silent eventReactive timing issues.
+  bca_result_store <- reactiveVal(NULL)
+  top1_result_store <- reactiveVal(NULL)
+  bca_values_store <- reactiveVal(NULL)
+  bca_source_store <- reactiveVal("Author analysis")
+  bca_status_store <- reactiveVal("BCa/EIS: not manually recomputed yet. Use Author analysis, or paste values and press Recompute.")
+
+  output$txt_bca_run_status <- renderText({ bca_status_store() })
+
+  observeEvent(input$bca_recompute_manual, {
+    x <- .parse_bca_values(input$bca_values_text)
+    if (length(x) < 5) {
+      bca_status_store(paste0("Manual recompute stopped: only ", length(x), " positive values found. At least 5 values are required; at least 3 followers are required for BCa/EIS."))
+      showNotification("Manual BCa/EIS stopped: at least 5 positive values are required.", type = "error", duration = 6)
+      return(invisible(NULL))
+    }
+
+    bca_status_store(paste0("Manual BCa/EIS running... n=", length(x), ", R=", input$bca_R, "."))
+
+    out <- shiny::withProgress(message = "Running manual BCa/EIS", value = 0, {
+      res <- scan_aac_bca(
+        x = x,
+        R = input$bca_R,
+        cutoff = input$bca_cutoff,
+        conf = input$bca_conf,
+        progress = function(i, total) {
+          shiny::incProgress(0.75 / max(total, 1), detail = paste0("BCa/EIS point ", i, " of ", total, " | R=", input$bca_R))
+        }
+      )
+      shiny::incProgress(0.10, detail = "Computing Top-1 conditional BCa/EIS")
+      top1 <- scan_topk_bca_eis(
+        x = x,
+        k = input$bca_top_k,
+        R = input$bca_R,
+        cutoff_or = input$bca_cutoff,
+        conf = input$bca_conf
+      )
+      shiny::incProgress(0.15, detail = "Finalizing tables and plots")
+      list(res = res, top1 = top1)
+    })
+
+    out$res$EIS_point <- suppressWarnings(as.numeric(out$res$BCa_lower)) / input$bca_cutoff
+    out$res$AAC_candidate <- ifelse(is.finite(out$res$AAC) & out$res$AAC > input$bca_cutoff, "AAC_OR > cutoff", "AAC_OR <= cutoff")
+    out$res$source <- "Editable values"
+    out$top1$source <- "Editable values"
+
+    bca_values_store(x)
+    bca_result_store(out$res)
+    top1_result_store(out$top1)
+    bca_source_store("Editable values")
+    bca_status_store(paste0("Manual BCa/EIS completed: n=", length(x), ", rows=", nrow(out$res), ", source=Editable values."))
+    showNotification(paste0("Manual BCa/EIS completed: ", nrow(out$res), " rows."), type = "message", duration = 5)
+  }, ignoreInit = TRUE)
+
+  bca_manual_values <- eventReactive(input$bca_recompute_manual, {
+    x <- .parse_bca_values(input$bca_values_text)
+    shiny::validate(
+      shiny::need(length(x) >= 5, "Editable BCa/EIS values require at least 5 positive numbers.")
+    )
+    x
+  }, ignoreInit = TRUE)
+
+  bca_eis_result <- reactive({
+    stored <- bca_result_store()
+    if (!is.null(stored) && is.data.frame(stored)) return(stored)
+
+    manual_mode <- FALSE
+
+    if (isTRUE(manual_mode)) {
+      x <- bca_manual_values()
+    } else {
+      nodes <- rv$author_nodes %||% rv$nodes20 %||% rv$nodes_full
+
+      shiny::validate(
+        shiny::need(is.data.frame(nodes) && nrow(nodes) > 0, "Please run author analysis first, or press Recompute BCa/EIS from editable values."),
+        shiny::need("value" %in% names(nodes), paste0(
+          "Author publication count column `value` not found. Available columns: ",
+          if (is.data.frame(nodes)) paste(names(nodes), collapse = ", ") else "none"
+        ))
+      )
+
+      x <- suppressWarnings(as.numeric(nodes$value))
+      x <- x[is.finite(x) & x > 0]
+    }
+
+    shiny::validate(
+      shiny::need(length(x) >= 5, "BCa/EIS requires at least 5 positive values; n >= 20 is recommended for stable BCa intervals.")
+    )
+
+    src_label <- bca_source_store()
+    res <- shiny::withProgress(message = "Running BCa/EIS bootstrap", value = 0, {
+      scan_aac_bca(
+        x = x,
+        R = input$bca_R,
+        cutoff = input$bca_cutoff,
+        conf = input$bca_conf,
+        progress = function(i, total) {
+          shiny::incProgress(1 / max(total, 1), detail = paste0("Point ", i, " of ", total, " | R=", input$bca_R))
+        }
+      )
+    })
+    res$EIS_point <- suppressWarnings(as.numeric(res$BCa_lower)) / input$bca_cutoff
+    res$AAC_candidate <- ifelse(is.finite(res$AAC) & res$AAC > input$bca_cutoff, "AAC_OR > cutoff", "AAC_OR <= cutoff")
+    res$source <- src_label
+    res
+  })
+
+  bca_eis_summary <- reactive({
+    summarize_bca_eis(bca_eis_result(), cutoff = input$bca_cutoff)
+  })
+
+  output$txt_bca_eis_decision <- renderText({
+    sm <- bca_eis_summary()
+    if (is.null(sm) || !nrow(sm)) return("No BCa/EIS result available.")
+    paste0(
+      "Data source = ", bca_source_store(), "\n",
+      "Auto-selected elbow point = ", sm$selected_point,
+      "; publication count = ", round(sm$selected_value, 3),
+      "; AAC = ", round(sm$AAC, 3),
+      "; BCa CI = [", round(sm$BCa_lower, 3), ", ", round(sm$BCa_upper, 3), "]",
+      "; EIS = ", round(sm$EIS, 3),
+      "; decision = ", sm$classification, ".\n",
+      "Criterion: EIS = BCa_lower / AAC_OR cutoff. EIS > 1 indicates a statistically supported elbow; EIS <= 1 indicates no significant elbow. ",
+      sm$rule
+    )
+  })
+
+  output$tbl_bca_eis_summary <- DT::renderDT({
+    DT::datatable(
+      bca_eis_summary(),
+      options = list(dom = 't', scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
+
+  output$tbl_bca_eis <- DT::renderDT({
+    res <- bca_eis_result()
+    DT::datatable(
+      res,
+      options = list(pageLength = 10, scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
+
+  top1_bca_eis_result <- reactive({
+    stored <- top1_result_store()
+    if (!is.null(stored) && is.data.frame(stored)) {
+      # Recompute stored manual result if user changes Top-k, cutoff, R, or confidence.
+      stored_x <- bca_values_store()
+      if (!is.null(stored_x) && length(stored_x) >= 5) {
+        return(scan_topk_bca_eis(
+          x = stored_x,
+          k = input$bca_top_k,
+          R = input$bca_R,
+          cutoff_or = input$bca_cutoff,
+          conf = input$bca_conf
+        ))
+      }
+      return(stored)
+    }
+
+    nodes <- rv$author_nodes %||% rv$nodes20 %||% rv$nodes_full
+    shiny::validate(
+      shiny::need(is.data.frame(nodes) && nrow(nodes) > 0, "Please run author analysis first, or press Recompute BCa/EIS from editable values."),
+      shiny::need("value" %in% names(nodes), paste0(
+        "Author publication count column `value` not found. Available columns: ",
+        if (is.data.frame(nodes)) paste(names(nodes), collapse = ", ") else "none"
+      ))
+    )
+    x <- suppressWarnings(as.numeric(nodes$value))
+    x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+    shiny::validate(shiny::need(length(x) >= 5, "Top-k BCa/EIS requires at least 5 positive values."))
+
+    res <- shiny::withProgress(message = "Running Top-k conditional BCa/EIS", value = 0, {
+      shiny::incProgress(0.25, detail = paste0("Fixing Top ", input$bca_top_k, " and resampling followers | R=", input$bca_R))
+      out <- scan_topk_bca_eis(
+        x = x,
+        k = input$bca_top_k,
+        R = input$bca_R,
+        cutoff_or = input$bca_cutoff,
+        conf = input$bca_conf
+      )
+      shiny::incProgress(0.75, detail = "Drawing Top-k dominance plot")
+      out
+    })
+    res$source <- bca_source_store()
+    res
+  })
+
+  output$txt_top1_bca_eis <- renderText({
+    z <- top1_bca_eis_result()
+    if (is.null(z) || !nrow(z)) return("No Top-k BCa/EIS result available.")
+    .bca_caption_text(z, source_label = bca_source_store())
+  })
+
+  output$tbl_top1_bca_eis <- DT::renderDT({
+    DT::datatable(
+      top1_bca_eis_result(),
+      options = list(dom = 't', scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
+
+  output$plt_top1_dominance <- renderPlot({
+    stored_x <- bca_values_store()
+    if (!is.null(stored_x) && length(stored_x) >= 5) {
+      x <- stored_x
+    } else {
+      nodes <- rv$author_nodes %||% rv$nodes20 %||% rv$nodes_full
+      shiny::validate(
+        shiny::need(is.data.frame(nodes) && nrow(nodes) > 0, "Please run author analysis first, or press Recompute BCa/EIS from editable values."),
+        shiny::need("value" %in% names(nodes), "Author publication count column `value` not found.")
+      )
+      x <- suppressWarnings(as.numeric(nodes$value))
+      x <- x[is.finite(x) & x > 0]
+    }
+    x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+    shiny::validate(shiny::need(length(x) >= 5, "Top-k dominance plot requires at least 5 positive values."))
+    z <- top1_bca_eis_result()
+    .plot_topk_dominance(x, z, main_title = "Top-k Dominance vs Rest: Conditional BCa/EIS")
+  })
+
+  output$plt_bca_eis <- renderPlot({
+    df <- bca_eis_result()
+    shiny::validate(shiny::need(is.data.frame(df) && nrow(df) > 0, "No BCa/EIS result available."))
+
+    df$point_index <- suppressWarnings(as.numeric(df$point_index))
+    df$AAC <- suppressWarnings(as.numeric(df$AAC))
+    df$BCa_lower <- suppressWarnings(as.numeric(df$BCa_lower))
+    df$BCa_upper <- suppressWarnings(as.numeric(df$BCa_upper))
+    if (!("EIS_point" %in% names(df))) df$EIS_point <- df$BCa_lower / input$bca_cutoff
+    df$EIS_point <- suppressWarnings(as.numeric(df$EIS_point))
+    smry <- summarize_bca_eis(df, cutoff = input$bca_cutoff)
+    sel <- which(df$point_index == smry$selected_point)
+    if (!length(sel)) sel <- integer(0)
+
+    yy <- c(df$AAC, df$BCa_lower, df$BCa_upper, input$bca_cutoff)
+    yy <- yy[is.finite(yy)]
+    if (!length(yy)) yy <- c(0, 1)
+    y_lim <- range(yy, na.rm = TRUE)
+    pad <- diff(y_lim) * 0.10
+    if (!is.finite(pad) || pad == 0) pad <- 0.5
+    y_lim <- y_lim + c(-pad, pad)
+
+    plot(
+      df$point_index,
+      df$AAC,
+      type = "b",
+      pch = 19,
+      lwd = 2,
+      xlab = "Rank position / internal point index",
+      ylab = "AAC OR ratio",
+      main = "BCa/EIS: AAC_OR Curve with BCa Confidence Intervals and Smooth Trend",
+      ylim = y_lim
+    )
+
+    ok_ci <- is.finite(df$point_index) & is.finite(df$BCa_lower) & is.finite(df$BCa_upper)
+    if (any(ok_ci)) {
+      arrows(
+        x0 = df$point_index[ok_ci],
+        y0 = df$BCa_lower[ok_ci],
+        x1 = df$point_index[ok_ci],
+        y1 = df$BCa_upper[ok_ci],
+        angle = 90,
+        code = 3,
+        length = 0.05
+      )
+    }
+
+    ok_smooth <- is.finite(df$point_index) & is.finite(df$AAC)
+    if (sum(ok_smooth) >= 4) {
+      sm <- stats::lowess(df$point_index[ok_smooth], df$AAC[ok_smooth], f = 2/3, iter = 1)
+      lines(sm$x, sm$y, lwd = 3, lty = 1)
+    }
+
+    abline(h = input$bca_cutoff, lty = 2, lwd = 2)
+
+    # Criterion note printed directly on the plot
+    usr <- par("usr")
+    text(
+      x = usr[1] + 0.02 * (usr[2] - usr[1]),
+      y = usr[4] - 0.06 * (usr[4] - usr[3]),
+      labels = "Criterion: Significant if BCa lower > AAC_OR cutoff; EIS = BCa lower / cutoff > 1",
+      adj = c(0, 1), cex = 0.8
+    )
+
+    sig <- !is.na(df$decision) & df$decision == "Significant elbow" & is.finite(df$point_index) & is.finite(df$AAC)
+    if (any(sig)) {
+      points(df$point_index[sig], df$AAC[sig], pch = 8, cex = 1.6, lwd = 2)
+    }
+
+    # Automatic selected elbow/candidate: always shown in red.
+    if (length(sel) && is.finite(df$point_index[sel[1]]) && is.finite(df$AAC[sel[1]])) {
+      points(df$point_index[sel[1]], df$AAC[sel[1]], pch = 19, cex = 2.0, col = "red")
+      text(
+        df$point_index[sel[1]], df$AAC[sel[1]],
+        labels = paste0("Selected: ", smry$classification, "\nEIS=", round(smry$EIS, 2), " (Sig if >1)"),
+        pos = 4, cex = 0.95, col = "red"
+      )
+    }
+
+    legend(
+      "topright",
+      legend = c("AAC_OR", "BCa CI", "LOWESS smooth", paste0("AAC_OR cutoff = ", input$bca_cutoff), "Significant elbow", "Auto-selected elbow / candidate"),
+      lty = c(1, 1, 1, 2, NA, NA),
+      pch = c(19, NA, NA, NA, 8, 19),
+      lwd = c(2, 1, 3, 2, NA, NA),
+      col = c("black", "black", "black", "black", "black", "red"),
+      bty = "n"
+    )
+  })
+
+  output$dl_bca_eis <- downloadHandler(
+    filename = function() paste0("BCa_EIS_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
+    content = function(file) {
+      res <- tryCatch(bca_eis_result(), error = function(e) data.frame(Message = conditionMessage(e)))
+      utils::write.csv(res, file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
+
+
+  output$dl_bca_topk_png <- downloadHandler(
+    filename = function() paste0("TopK_BCa_EIS_dominance_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      stored_x <- bca_values_store()
+      if (!is.null(stored_x) && length(stored_x) >= 5) {
+        x <- stored_x
+      } else {
+        nodes <- rv$author_nodes %||% rv$nodes20 %||% rv$nodes_full
+        x <- if (is.data.frame(nodes) && "value" %in% names(nodes)) suppressWarnings(as.numeric(nodes$value)) else numeric(0)
+      }
+      x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+      z <- top1_bca_eis_result()
+      grDevices::png(file, width = 1800, height = 1200, res = 180)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      .plot_topk_dominance(x, z, main_title = "Top-k Dominance vs Rest: Conditional BCa/EIS")
+    }
+  )
+
+  output$dl_bca_topk_figure_zip <- downloadHandler(
+    filename = function() paste0("TopK_BCa_EIS_figure_caption_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip"),
+    content = function(file) {
+      td <- tempfile("bca_topk_")
+      dir.create(td, recursive = TRUE, showWarnings = FALSE)
+      png_file <- file.path(td, "TopK_BCa_EIS_dominance.png")
+      cap_file <- file.path(td, "TopK_BCa_EIS_caption.txt")
+      stored_x <- bca_values_store()
+      if (!is.null(stored_x) && length(stored_x) >= 5) {
+        x <- stored_x
+      } else {
+        nodes <- rv$author_nodes %||% rv$nodes20 %||% rv$nodes_full
+        x <- if (is.data.frame(nodes) && "value" %in% names(nodes)) suppressWarnings(as.numeric(nodes$value)) else numeric(0)
+      }
+      x <- sort(x[is.finite(x) & x > 0], decreasing = TRUE)
+      z <- top1_bca_eis_result()
+      grDevices::png(png_file, width = 1800, height = 1200, res = 180)
+      .plot_topk_dominance(x, z, main_title = "Top-k Dominance vs Rest: Conditional BCa/EIS")
+      grDevices::dev.off()
+      writeLines(.bca_caption_text(z, source_label = bca_source_store()), cap_file, useBytes = TRUE)
+      old <- getwd(); on.exit(setwd(old), add = TRUE)
+      setwd(td)
+      utils::zip(zipfile = file, files = c("TopK_BCa_EIS_dominance.png", "TopK_BCa_EIS_caption.txt"))
+    }
+  )
+
   lotka_dist_reactive <- reactive({
+    if (!is.null(rv$author_lists_fl) && length(rv$author_lists_fl) > 0) {
+      return(.build_lotka_input_from_author_lists(rv$author_lists_fl))
+    }
     if (!is.null(rv$author_lists_all) && length(rv$author_lists_all) > 0) {
       return(.build_lotka_input_from_author_lists(rv$author_lists_all))
     }
@@ -2593,7 +8556,7 @@ perf_data_long <- reactive({
   aac <- if (!is.na(aac_from_data)) aac_from_data else .perf_compute_aac(values)
 
   plot.new()
-  title(main = domain_var, font.main = 2, cex.main = 1.9, line = 0.5)
+  title(main = domain_var, font.main = 2, cex.main = 1.9, line = 0.5, col.main = "#d62728")
 
   n_rows <- nrow(dom)
   text_cex <- if (n_rows <= 4) 2.4 else if (n_rows <= 7) 2.0 else 1.6
@@ -2605,9 +8568,9 @@ perf_data_long <- reactive({
   }
 
   if (!is.na(aac)) {
-    text(0.5, 0.08, paste("AAC =", round(aac, 4)), cex = 1.8, font = 2)
+    text(0.5, 0.08, paste("AAC =", round(aac, 4)), cex = 1.8, font = 2, col = "#d62728")
   } else {
-    text(0.5, 0.08, "AAC = NA", cex = 1.8, font = 2)
+    text(0.5, 0.08, "AAC = NA", cex = 1.8, font = 2, col = "#d62728")
   }
 
   invisible(NULL)
@@ -2634,7 +8597,7 @@ perf_data_long <- reactive({
   for (d in doms) {
     x <- .get_domain_summary(d)
     df <- x$df
-    aac_val <- as_scalar_or_na(x$AAC$value, NA)
+    aac_val <- as_scalar_or_na(x$AAC, NA)
 
     if (identical(d, "State/Province")) {
       # summary uses "State/Province" domain name already
@@ -2702,6 +8665,7 @@ output$perf_preview_plot <- renderPlot({
 
 output$perf_download_png <- downloadHandler(
   filename = function() "performance_report.png",
+  contentType = "image/png",
   content  = function(file) {
     req(perf_data_long())
     grDevices::png(file, width = 3200, height = 2400, res = 300)
@@ -2842,6 +8806,14 @@ output$tbl_mesh_edges <- DT::renderDT({
   if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(.dt_msg("No MeSH edges yet. Click 'Run MeSH' after fetching/uploading."))
   .dt_fmt(df)
 })
+
+# ---- Slope-tab extra plots ----
+# The old separate analysis-tab block has been removed intentionally.
+# These three tabs are rendered later by the FINAL OVERRIDE block,
+# which reuses the stable Slope tab pipeline: .sg_final_build_wide(),
+# .sg_final_long_from_wide(), and .sg_final_draw_domain().
+# This prevents the old DT/plotly/ggplot text-label outputs from reappearing.
+
 
 # Journal/Year table
 output$tbl_journal_year <- DT::renderDT({
@@ -3491,11 +9463,11 @@ observeEvent(session$clientData$url_search, {
 
   .draw_summary_panel <- function(dom, df, aac){
     plot.new()
-    title(main = dom, cex.main = 1.35, font.main = 2)
+    title(main = dom, cex.main = 1.35, font.main = 2, col.main = "#d62728")
 
     if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
       text(0.5, 0.55, "No data yet.\nRun this domain first.", cex = 1.05)
-      mtext(paste0("AAC = ", signif(as_scalar_or_na(aac, NA), 4)), side=1, line=0.35, cex=1.0, font=2)
+      mtext(paste0("AAC = ", signif(as_scalar_or_na(aac, NA), 4)), side=1, line=0.35, cex=1.0, font=2, col="#d62728")
       return(invisible(NULL))
     }
 
@@ -3516,7 +9488,7 @@ observeEvent(session$clientData$url_search, {
       text(x_val,  yy, format(val, trim=TRUE, scientific=FALSE), adj=1, cex=1.35, font=2)
     }
 
-    mtext(paste0("AAC = ", signif(as_scalar_or_na(aac, NA), 4)), side=1, line=0.35, cex=1.15, font=2)
+    mtext(paste0("AAC = ", signif(as_scalar_or_na(aac, NA), 4)), side=1, line=0.35, cex=1.15, font=2, col="#d62728")
     invisible(NULL)
   }
 
@@ -3656,32 +9628,8 @@ observeEvent(session$clientData$url_search, {
   observeEvent(input$pubmed_txt, {
     req(input$pubmed_txt)
 
-# ---- Upload access gate (iplist/trial/CMC) ----
-g_up <- ipm_gate_session(session, cmc = input$cmc %||% "", app_dir = APP_DIR, inc_count_on_allow = TRUE)
-
-rv$ip_access_type <- if (identical(g_up$policy, "iplist")) "IP pass" else if (identical(g_up$reason, "trial_first_time")) "Trial" else "CMC pass"
-rv$ip_addr <- g_up$ip
-
-if (!isTRUE(g_up$ok)) {
-  if (identical(g_up$reason, "ip_not_allowlisted")) {
-    showModal(modalDialog(
-      title = "Access blocked",
-      "Your IP is not in iplist.txt.",
-      easyClose = TRUE,
-      footer = modalButton("OK")
-    ))
-  } else {
-    showModal(modalDialog(
-      title = "CMC required",
-      "Upload requires a valid 10-digit numeric CMC after the one-time trial.",
-      "Please enter CMC or contact the author.",
-      easyClose = TRUE,
-      footer = modalButton("OK")
-    ))
-  }
-  return()
-}
-
+# AMA/PubMed TXT upload is allowed without CMC.
+# CMC remains required only for online PubMed Fetch/domain analysis.
     dest <- PERM_PUBMED_TXT
     ok <- tryCatch(file.copy(input$pubmed_txt$datapath, dest, overwrite = TRUE), error=function(e) { rv$log <- paste0(rv$log, "
 [TXT] file.copy error: ", e$message); FALSE })
@@ -3708,16 +9656,73 @@ if (!isTRUE(g_up$ok)) {
   # Optional: nodes+edges zip (if you later wire this button)
   output$dl_nodes_edges_zip <- downloadHandler(
     filename = function(){ paste0("nodes_edges_", format(Sys.Date(), "%Y%m%d"), ".zip") },
+    contentType = "application/zip",
     content = function(file){
-      dir.create(file.path(RUNTIME_DIR,"download"), showWarnings = FALSE, recursive = TRUE)
+      dl_dir <- .get_dl_dir()
+      dir.create(dl_dir, showWarnings = FALSE, recursive = TRUE)
       # Try best-effort export from rv
-      if (!is.null(rv$nodes20)) utils::write.csv(rv$nodes20, file.path(RUNTIME_DIR,"download","nodes.csv"), row.names = FALSE, fileEncoding="UTF-8")
-      if (!is.null(rv$edges20)) utils::write.csv(rv$edges20, file.path(RUNTIME_DIR,"download","edges.csv"), row.names = FALSE, fileEncoding="UTF-8")
-      .write_offline_index("download", rv)
-      .zip_download_dir(file, "download")
+      if (!is.null(rv$nodes20)) utils::write.csv(rv$nodes20, file.path(dl_dir,"nodes.csv"), row.names = FALSE, fileEncoding="UTF-8")
+      if (!is.null(rv$edges20)) utils::write.csv(rv$edges20, file.path(dl_dir,"edges.csv"), row.names = FALSE, fileEncoding="UTF-8")
+      .write_offline_index(dl_dir, rv)
+      .zip_download_dir(file, dl_dir)
     }
   )
 
+  # ---- PMID query-result download and preview ----
+  .pmids_current <- function(){
+    pm <- rv$pmids
+    if (is.null(pm) || length(pm) == 0) return(character())
+    pm <- as.character(pm)
+    pm <- pm[!is.na(pm) & nzchar(trimws(pm))]
+    unique(pm)
+  }
+
+  .pmids_df <- function(){
+    pm <- .pmids_current()
+    data.frame(No = seq_along(pm), PMID = pm, stringsAsFactors = FALSE)
+  }
+
+  output$tbl_pmids <- DT::renderDT({
+    pm <- .pmids_current()
+    if (!length(pm)) {
+      return(DT::datatable(data.frame(Message = "No PMIDs yet. Run a PubMed query or upload MEDLINE first."), options = list(dom = "t"), rownames = FALSE))
+    }
+    DT::datatable(.pmids_df(), options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
+  })
+
+  output$ui_icite_link <- renderUI({
+    pm <- .pmids_current()
+    if (!length(pm)) return(tags$div(class = "small-note", "No PMIDs yet. Run Fetch PubMed first."))
+    url <- rv$icite_url
+    if (is.null(url) || !nzchar(url)) {
+      url <- paste0("https://icite.od.nih.gov/analysis?pmids=", paste(pm[seq_len(min(length(pm), 900))], collapse = ","))
+    }
+    tags$div(
+      tags$p(tags$b("Fetched PMIDs: "), length(pm)),
+      tags$a(href = url, target = "_blank", "Open these PMIDs in NIH iCite"),
+      tags$p(class = "small-note", "The iCite URL uses the first 900 PMIDs to keep the URL practical; the download buttons export the full fetched PMID list.")
+    )
+  })
+
+  output$dl_pmids_txt <- downloadHandler(
+    filename = function(){ paste0("pmids_query_result_", format(Sys.Date(), "%Y%m%d"), ".txt") },
+    contentType = "text/plain",
+    content = function(file){
+      pm <- .pmids_current()
+      shiny::validate(shiny::need(length(pm) > 0, "No PMIDs available. Run Fetch PubMed first."))
+      writeLines(pm, file, useBytes = TRUE)
+    }
+  )
+
+  output$dl_pmids_csv <- downloadHandler(
+    filename = function(){ paste0("pmids_query_result_", format(Sys.Date(), "%Y%m%d"), ".csv") },
+    contentType = "text/csv",
+    content = function(file){
+      pm <- .pmids_current()
+      shiny::validate(shiny::need(length(pm) > 0, "No PMIDs available. Run Fetch PubMed first."))
+      utils::write.csv(data.frame(PMID = pm, stringsAsFactors = FALSE), file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
 
 
 # ---- domain picker helpers (Kano/SSplot) ----
@@ -3799,6 +9804,153 @@ observeEvent(input$load_example, {
     authors <- authors[nzchar(authors)]
     unique(authors)
   }
+
+
+
+  # ---- Series author AAC mode ---------------------------------------------
+  .batch_split_author_names <- function(x){
+    x <- as.character(x %||% "")
+    x <- gsub("\r", "\n", x)
+    parts <- unlist(strsplit(x, "\n|;|\\|", perl = TRUE), use.names = FALSE)
+    parts <- trimws(parts)
+    parts <- parts[nzchar(parts)]
+    parts <- sub("\\[Author\\]$", "", parts, ignore.case = TRUE)
+    parts <- gsub('^"|"$', "", trimws(parts))
+    unique(parts[nzchar(parts)])
+  }
+
+  .batch_get_author_names_for_run <- function(){
+    # When the AMA textarea switch is checked, use the textarea as the source.
+    # This supports either one-author-per-line input or full AMA/PubMed references.
+    if (isTRUE(input$use_ama_textarea)) {
+      txt <- paste(input$ama_refs_text %||% "", collapse = "\n")
+      txt <- enc2utf8(as.character(txt))
+      txt <- gsub("\r\n|\r", "\n", txt, perl = TRUE)
+      if (!nzchar(trimws(txt))) return(character())
+
+      wide <- tryCatch(.ref_to_wide_from_text_strict(txt), error = function(e) NULL)
+      if (is.data.frame(wide) && nrow(wide) > 0) {
+        author_cols <- grep("^Author_", names(wide), value = TRUE)
+        if (length(author_cols) > 0) {
+          nm <- unlist(wide[author_cols], use.names = FALSE)
+          nm <- trimws(as.character(nm))
+          nm <- nm[nzchar(nm)]
+          if (length(nm) > 0) return(unique(nm))
+        }
+      }
+      return(.batch_split_author_names(txt))
+    }
+
+    .batch_split_author_names(input$term)
+  }
+
+  .batch_aac_label <- function(aac){
+    if (!is.finite(aac)) return(NA_character_)
+    if (aac < 0.60) return("Low dominance")
+    if (aac < 0.67) return("Emerging dominance")
+    if (aac < 0.70) return("Moderate dominance")
+    if (aac < 0.75) return("High dominance")
+    "Very high dominance"
+  }
+
+  .batch_fetch_xml_by_pmids <- function(pmids, batch_size = 200){
+    if (!length(pmids)) return("")
+    xml_parts <- character()
+    idxs <- seq(1, length(pmids), by = batch_size)
+    for (i in idxs) {
+      chunk <- pmids[i:min(i + batch_size - 1, length(pmids))]
+      x <- tryCatch(rentrez::entrez_fetch(db = "pubmed", id = chunk, rettype = "xml", parsed = FALSE),
+                    error = function(e) "")
+      if (nzchar(x)) xml_parts <- c(xml_parts, x)
+      Sys.sleep(0.35)
+    }
+    paste(xml_parts, collapse = "\n")
+  }
+
+  .batch_compute_author_aac_one <- function(author_name, retmax = 500){
+    author_name <- trimws(as.character(author_name))
+    q <- if (grepl("\\[Author\\]", author_name, ignore.case = TRUE)) author_name else paste0(author_name, "[Author]")
+
+    ss <- tryCatch(rentrez::entrez_search(db = "pubmed", term = q, retmax = retmax), error = function(e) e)
+    if (inherits(ss, "error")) {
+      return(data.frame(target_author = author_name, query = q, pubmed_hits = NA_integer_, fetched_pmids = 0L,
+                        top1_author = NA_character_, top1_n = NA_integer_, top2_author = NA_character_, top2_n = NA_integer_,
+                        top3_author = NA_character_, top3_n = NA_integer_, AAC = NA_real_, odds_ratio_r = NA_real_,
+                        dominance_label = NA_character_, status = paste0("PubMed search failed: ", conditionMessage(ss)), stringsAsFactors = FALSE))
+    }
+
+    pmids <- ss$ids
+    pubmed_hits <- suppressWarnings(as.numeric(ss$count))
+    fetched_pmids <- length(pmids)
+    if (!length(pmids)) {
+      return(data.frame(target_author = author_name, query = q, pubmed_hits = as.integer(ss$count), fetched_pmids = 0L,
+                        top1_author = NA_character_, top1_n = NA_integer_, top2_author = NA_character_, top2_n = NA_integer_,
+                        top3_author = NA_character_, top3_n = NA_integer_, AAC = NA_real_, odds_ratio_r = NA_real_,
+                        dominance_label = NA_character_, status = "No PMID fetched", stringsAsFactors = FALSE))
+    }
+
+    # AAC is valid only when all PubMed hits are actually fetched.
+    # If PubMed has more hits than retmax/fetched_pmids, the author distribution is incomplete;
+    # this is common for duplicated/ambiguous author names and would bias AAC.
+    if (is.finite(pubmed_hits) && pubmed_hits > fetched_pmids) {
+      return(data.frame(target_author = author_name, query = q, pubmed_hits = as.integer(pubmed_hits), fetched_pmids = fetched_pmids,
+                        top1_author = NA_character_, top1_n = NA_integer_, top2_author = NA_character_, top2_n = NA_integer_,
+                        top3_author = NA_character_, top3_n = NA_integer_, AAC = NA_real_, odds_ratio_r = NA_real_,
+                        dominance_label = NA_character_,
+                        status = sprintf("Skipped AAC: incomplete PubMed fetch (pubmed_hits=%s > fetched_pmids=%s). Increase retmax or refine the author query.",
+                                         format(pubmed_hits, scientific = FALSE, trim = TRUE), fetched_pmids),
+                        stringsAsFactors = FALSE))
+    }
+
+    xml_txt <- .batch_fetch_xml_by_pmids(pmids)
+    articles <- regmatches(xml_txt, gregexpr("<PubmedArticle\\b[\\s\\S]*?</PubmedArticle>", xml_txt, perl = TRUE))[[1]]
+    if (!length(articles)) {
+      return(data.frame(target_author = author_name, query = q, pubmed_hits = as.integer(ss$count), fetched_pmids = length(pmids),
+                        top1_author = NA_character_, top1_n = NA_integer_, top2_author = NA_character_, top2_n = NA_integer_,
+                        top3_author = NA_character_, top3_n = NA_integer_, AAC = NA_real_, odds_ratio_r = NA_real_,
+                        dominance_label = NA_character_, status = "No XML article blocks parsed", stringsAsFactors = FALSE))
+    }
+
+    fl <- unlist(lapply(articles, function(z){
+      a <- get_authors_per_article(z)
+      a <- trimws(as.character(a)); a <- a[nzchar(a)]
+      if (!length(a)) return(character(0))
+      if (length(a) == 1) return(a[1])
+      unique(c(a[1], a[length(a)]))
+    }), use.names = FALSE)
+    fl <- trimws(fl); fl <- fl[nzchar(fl)]
+    if (!length(fl)) {
+      return(data.frame(target_author = author_name, query = q, pubmed_hits = as.integer(ss$count), fetched_pmids = length(pmids),
+                        top1_author = NA_character_, top1_n = NA_integer_, top2_author = NA_character_, top2_n = NA_integer_,
+                        top3_author = NA_character_, top3_n = NA_integer_, AAC = NA_real_, odds_ratio_r = NA_real_,
+                        dominance_label = NA_character_, status = "No first/last authors extracted", stringsAsFactors = FALSE))
+    }
+
+    tb <- sort(table(fl), decreasing = TRUE)
+    nm <- names(tb); vv <- as.numeric(tb)
+    top_names <- c(nm, rep(NA_character_, 3))[1:3]
+    top_vals  <- c(vv, rep(NA_real_, 3))[1:3]
+    r <- NA_real_; aac <- NA_real_
+    if (all(is.finite(top_vals[1:3])) && top_vals[2] > 0 && top_vals[3] > 0) {
+      r <- (top_vals[1] / top_vals[2]) / (top_vals[2] / top_vals[3])
+      aac <- r / (1 + r)
+    }
+    data.frame(target_author = author_name, query = q, pubmed_hits = as.integer(ss$count), fetched_pmids = length(pmids),
+               top1_author = top_names[1], top1_n = as.integer(top_vals[1]),
+               top2_author = top_names[2], top2_n = as.integer(top_vals[2]),
+               top3_author = top_names[3], top3_n = as.integer(top_vals[3]),
+               AAC = round(aac, 4), odds_ratio_r = round(r, 4), dominance_label = .batch_aac_label(aac),
+               status = "OK", stringsAsFactors = FALSE)
+  }
+
+  output$dl_batch_author_aac <- downloadHandler(
+    filename = function() paste0("series_author_AAC_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
+    content = function(file) {
+      df <- rv$batch_author_aac
+      if (is.null(df) || !is.data.frame(df)) df <- data.frame(Message = "No series author AAC result yet. Check the box and click Fetch PubMed.")
+      utils::write.csv(df, file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
 
   # Build a domain network via: co-occurrence edges -> directed symmetric -> FLCA_run -> major sampling
   
@@ -3890,7 +10042,7 @@ observeEvent(input$load_example, {
 
     # Standardize runner outputs (nodes/data)
     out <- list(
-      nodes = if (!is.null(res$modes)) res$modes else res$nodes,
+      nodes = if (!is.null(res$nodes)) res$nodes else res$nodes,
       data  = res$data
     )
 
@@ -3968,7 +10120,7 @@ cmc_now  <- input$cmc %||% ""
 # If CMC missing/invalid: force SoftwareX demo query (still counts as Trial for display)
 force_demo <- !ipm_is_cmc_10(cmc_now)
 if (isTRUE(force_demo)) {
-  demo_term <- "\"SoftwareX\"[Journal]"
+  demo_term <- "SoftwareX[Journal]"
   try(updateTextAreaInput(session, "term", value = demo_term), silent = TRUE)
 }
 
@@ -4025,6 +10177,49 @@ if (isTRUE(force_demo)) {
   showNotification('CMC missing/invalid → running demo query: "SoftwareX"[Journal].', type="message", duration=4)
 }
 
+# ---- Series author AAC mode: paste one author per line, append [Author], compute AAC CSV ----
+if (isTRUE(input$batch_author_aac)) {
+  author_source <- if (isTRUE(input$use_ama_textarea)) "AMA/PubMed textarea" else "PubMed query box"
+  author_names <- .batch_get_author_names_for_run()
+  if (!length(author_names)) {
+    addlog("[BATCH AAC][STOP] No author names found. When the textarea option is checked, paste one author per line or full AMA/PubMed references in the textarea; otherwise paste one author per line in the PubMed query box.")
+    return(NULL)
+  }
+  rv$log <- ""
+  rv$batch_author_aac <- NULL
+  addlog("[BATCH AAC] START | source=", author_source, " | authors=", length(author_names), " | retmax=", input$retmax, " | AAC guard=compute only when pubmed_hits <= fetched_pmids")
+  res <- list()
+  withProgress(message = "Series author AAC: fetching PubMed by author", value = 0, {
+    for (ii in seq_along(author_names)) {
+      nm <- author_names[ii]
+      incProgress(1 / length(author_names), detail = paste0(ii, "/", length(author_names), ": ", nm))
+      addlog("[BATCH AAC] ", ii, "/", length(author_names), " | ", nm, "[Author]")
+      res[[ii]] <- .batch_compute_author_aac_one(nm, retmax = input$retmax)
+      rr <- res[[ii]]
+      if (is.data.frame(rr) && nrow(rr)) {
+        addlog("[BATCH AAC][RESULT] ", nm,
+               " | hits=", rr$pubmed_hits[1], " fetched=", rr$fetched_pmids[1],
+               " | top1=", rr$top1_author[1], " n=", rr$top1_n[1],
+               " | top2=", rr$top2_author[1], " n=", rr$top2_n[1],
+               " | top3=", rr$top3_author[1], " n=", rr$top3_n[1],
+               " | AAC=", rr$AAC[1], " | ", rr$dominance_label[1],
+               " | status=", rr$status[1])
+      }
+    }
+  })
+  rv$batch_author_aac <- do.call(rbind, res)
+
+  # Also write a physical CSV into ./download/ so it appears in the download folder and WebZIP.
+  dl_dir <- .get_dl_dir()
+  dir.create(dl_dir, recursive = TRUE, showWarnings = FALSE)
+  batch_csv_path <- file.path(dl_dir, "series_author_AAC.csv")
+  utils::write.csv(rv$batch_author_aac, batch_csv_path, row.names = FALSE, fileEncoding = "UTF-8")
+  rv$batch_author_aac_csv_path <- batch_csv_path
+
+  addlog("[BATCH AAC] DONE | CSV saved: ", normalizePath(batch_csv_path, winslash = "/", mustWork = FALSE),
+         " | Download button: series author AAC CSV")
+  return(NULL)
+}
 
 
 
@@ -4149,6 +10344,16 @@ rv$edges_country <- rv$edges_stateprov <- NULL
 
       addlog("[IO] PubMed hits: ", s$count, " | fetched pmids: ", length(pmids))
       if (length(pmids) == 0) { addlog("[STOP] No PMIDs fetched. Try a different query."); return(NULL) }
+
+      # Save PMID list from the current query/upload for direct download and WebZIP.
+      try({
+        dl_dir <- .get_dl_dir()
+        dir.create(dl_dir, recursive = TRUE, showWarnings = FALSE)
+        pmid_df <- data.frame(PMID = as.character(pmids), stringsAsFactors = FALSE)
+        utils::write.csv(pmid_df, file.path(dl_dir, "pmids_query_result.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+        writeLines(as.character(pmids), file.path(dl_dir, "pmids_query_result.txt"), useBytes = TRUE)
+        addlog("[IO] PMID list saved: download/pmids_query_result.csv and download/pmids_query_result.txt")
+      }, silent = TRUE)
 
       
 incProgress(0.20, detail = "Fetching XML (batched)…")
@@ -4332,6 +10537,15 @@ extract_title <- function(article){
   tt <- gsub("[\r\n\t]+", " ", tt)
   trimws(tt)
 }
+extract_abstract <- function(article){
+  aa <- regmatches(article, gregexpr("<AbstractText[^>]*>([\\s\\S]*?)</AbstractText>", article, perl = TRUE))[[1]]
+  if (!length(aa)) return("")
+  aa <- gsub("<[^>]+>", " ", aa)
+  aa <- gsub("[\r\n\t]+", " ", aa)
+  aa <- gsub("\\s+", " ", aa)
+  trimws(paste(aa, collapse = " "))
+}
+
 
 
       # ----- PubMeta: Journal / Year / Articles -----
@@ -4360,6 +10574,7 @@ extract_title <- function(article){
 # Build pmid table for Most cited tab
 pmid_vec  <- vapply(articles, extract_pmid, character(1))
 title_vec <- vapply(articles, extract_title, character(1))
+abstract_vec <- vapply(articles, extract_abstract, character(1))
 year_vec  <- vapply(articles, extract_year, character(1))
 jour_vec  <- vapply(articles, extract_journal, character(1))
 keep <- nzchar(pmid_vec)
@@ -4368,6 +10583,7 @@ rv$pmid_tbl <- data.frame(
   Year = year_vec[keep],
   Journal = jour_vec[keep],
   Title = title_vec[keep],
+  Abstract = abstract_vec[keep],
   stringsAsFactors = FALSE
 )
 
@@ -4375,6 +10591,9 @@ rv$pmid_tbl <- data.frame(
 rv$article_years <- year_vec
 
       rv$pubmeta <- data.frame(
+        PMID    = pmid_vec,
+        Title   = title_vec,
+        Abstract = abstract_vec,
         Journal = vapply(articles, extract_journal, character(1)),
         Year    = vapply(articles, extract_year, character(1)),
         stringsAsFactors = FALSE
@@ -4429,16 +10648,18 @@ try({
       })
 
 
-            # n(PubMed): number of publications per author (count of records containing the author)
-      n_pubmed_tab <- table(unlist(lapply(author_lists_all, function(a){
+      # n(PubMed) and byline counts must use ALL authors in the byline.
+      # First/last authors are used only for value(first/last) and author edges.
+      # Example: Chien TW can have n(any byline)=111 but n(first/last)=18.
+      author_lists_for_counts <- author_lists_all
+      n_pubmed_tab <- table(unlist(lapply(author_lists_for_counts, function(a){
         a <- as.character(a); a <- trimws(a); a <- a[nzchar(a)]
-        unique(a)
+        unique(a)  # one PubMed record counts an author once
       })))
 
-      # n(byline appearances): raw count in byline lists (kept separate in case of duplicates)
-      n_byline_tab <- table(unlist(lapply(author_lists_all, function(a){
+      n_byline_tab <- table(unlist(lapply(author_lists_for_counts, function(a){
         a <- as.character(a); a <- trimws(a); a <- a[nzchar(a)]
-        a
+        unique(a)  # any byline appearance by record, not just first/last
       })))
       # single-author articles (first==last, length==1)
       single_tab <- table(unlist(lapply(author_lists_all, function(a){
@@ -4527,88 +10748,140 @@ try({
       nodes <- normalize_nodes(nodes)
       data_edges <- fix_edge_cols(normalize_edges(data_edges))
 
-      # Use the module runner: FLCA + major sampling + silhouette in ONE step
+      # Use the internal wrapper: FLCA + MajorSampling Top20 + silhouette/a*.
+      # IMPORTANT: do not call run_flca_ms_sil() directly here; the module runner
+      # can expect a list(input) and may fail with "not all is.data.frame(nodes)".
       cfg <- list(top_clusters=5, base_per_cluster=4, target_n=20, intra_delta=2, inter_delta=5, eps=1e-9)
-      res <- tryCatch(run_flca_ms_sil(nodes, data_edges, cfg, verbose = TRUE), error=function(e) e)
-      if (inherits(res, 'error')) {
-        warning(res$message)
-        nodes20 <- nodes
+      res <- tryCatch({
+        # Prefer the uploaded flca_ms_sil_module.R runner. It requires two
+        # data.frames (nodes, edges0), not a list. It returns modes + data.
+        if (exists("run_flca_ms_sil_runner", mode = "function")) {
+          z <- run_flca_ms_sil_runner(nodes, data_edges, cfg = cfg, verbose = TRUE)
+          if (!is.null(z$modes) && is.data.frame(z$modes)) {
+            list(nodes = z$modes, data = z$data, raw = z, engine = "run_flca_ms_sil_runner")
+          } else if (!is.null(z$nodes) && is.data.frame(z$nodes)) {
+            list(nodes = z$nodes, data = z$data, raw = z, engine = "run_flca_ms_sil_runner")
+          } else {
+            stop("run_flca_ms_sil_runner returned no modes/nodes data.frame")
+          }
+        } else {
+          run_flca_ms_sil_internal(nodes, data_edges, cfg = cfg, verbose = TRUE)
+        }
+      }, error = function(e) e)
+      if (inherits(res, 'error') || is.null(res) || !is.data.frame(res$nodes) || !nrow(res$nodes)) {
+        .res_msg <- if (inherits(res, "error")) conditionMessage(res) else "no valid Top20 result"
+        warning("[WARN] Author FLCA-MA-SIL Top20 failed; using deterministic Top20 fallback: ", .res_msg, call. = FALSE)
+        nodes20 <- nodes[order(-suppressWarnings(as.numeric(nodes$value)), as.character(nodes$name)), , drop = FALSE]
+        nodes20 <- utils::head(nodes20, 20)
         if (!('carac' %in% names(nodes20))) nodes20$carac <- 1L
-        nodes20$ssi <- 0
-        nodes20$a_star1 <- 0
-        edges20 <- data_edges
+        if (!('ssi' %in% names(nodes20))) nodes20$ssi <- 0
+        if (!('a_star1' %in% names(nodes20))) nodes20$a_star1 <- 0
+        if (!('a_i' %in% names(nodes20))) nodes20$a_i <- 0
+        if (!('b_i' %in% names(nodes20))) nodes20$b_i <- 0
+        top_names <- as.character(nodes20$name)
+        edges20 <- data_edges[data_edges$Leader %in% top_names & data_edges$Follower %in% top_names, , drop = FALSE]
       } else {
-        nodes20 <- res$modes
+        nodes20 <- res$nodes
         edges20 <- res$data
+        nodes20 <- nodes20[order(-suppressWarnings(as.numeric(nodes20$value)), as.character(nodes20$name)), , drop = FALSE]
+        nodes20 <- utils::head(nodes20, 20)
+        top_names <- as.character(nodes20$name)
+        if (is.data.frame(edges20) && nrow(edges20)) {
+          if ("follower" %in% names(edges20) && !("Follower" %in% names(edges20))) names(edges20)[names(edges20) == "follower"] <- "Follower"
+          edges20 <- edges20[edges20$Leader %in% top_names & edges20$Follower %in% top_names, , drop = FALSE]
+        } else {
+          edges20 <- data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors = FALSE)
+        }
       }
+      # Enforce FLCA one-link structure before SS: each follower has only one leader.
+      edges20 <- .author_enforce_single_edge_per_follower(nodes20, edges20)
+      addlog("[AUTHOR one-link] followers=", length(unique(edges20$Follower)),
+             " edges=", nrow(edges20),
+             "; duplicated followers=", sum(duplicated(edges20$Follower)))
 
+      # Make sure the displayed Top20 has at least two cluster labels for SS.
+      fixed_author <- .force_author_min2_clusters_and_ss(nodes20, edges20, data_edges = data_edges, cfg = cfg)
+      nodes20 <- fixed_author$nodes
+      edges20 <- .author_enforce_single_edge_per_follower(nodes20, fixed_author$edges)
+      addlog("[AUTHOR Top20] nodes=", if(is.data.frame(nodes20)) nrow(nodes20) else 0,
+             " clusters=", if(is.data.frame(nodes20) && "carac" %in% names(nodes20)) length(unique(nodes20$carac)) else 0,
+             " edges=", if(is.data.frame(edges20)) nrow(edges20) else 0,
+             if (isTRUE(fixed_author$changed)) paste0("; cluster repair: ", fixed_author$reason) else "")
       # keep in rv for downstream tables/plots
       rv$author_nodes <- nodes20
       rv$author_edges <- edges20
 
       
 
-      # Augment Author metrics (FA/LA, self, n_byline, AAC)
-      # ---- byline appearances (all-author positions) + single-author count ----
-      # Use rv$author_lists_all (all authors per article) created during PubMed fetch.
-      if (!is.null(rv$author_lists_all) && length(rv$author_lists_all) > 0) {
-        alist <- lapply(rv$author_lists_all, function(a){
+      # Augment Author metrics using the FULL byline and FULL first/last edges.
+      # n_pubmed / n_byline = any byline appearance by PubMed record.
+      # value = first/last author appearance including single-author papers once.
+      author_lists_metric <- rv$author_lists_all %||% author_lists_all
+      if (!is.null(author_lists_metric) && length(author_lists_metric) > 0) {
+        alist_any <- lapply(author_lists_metric, function(a){
           a <- unique(trimws(as.character(a)))
           a <- a[nzchar(a)]
           a
         })
-        flat <- unlist(alist, use.names = FALSE)
-        if (length(flat) > 0) {
-          tab_all <- sort(table(flat), decreasing = TRUE)
-          df_pub <- data.frame(
-            name = names(tab_all),
-            n_pubmed = as.integer(tab_all),
-            stringsAsFactors = FALSE
-          )
-          # single-author papers: length==1
-          singles <- unlist(lapply(alist, function(a) if (length(a)==1) a else character(0)), use.names = FALSE)
-          if (length(singles) > 0) {
-            tab_s <- table(singles)
-            df_pub$single_author <- as.integer(tab_s[df_pub$name])
-            df_pub$single_author[is.na(df_pub$single_author)] <- 0L
-          } else {
-            df_pub$single_author <- 0L
-          }
+        flat_any <- unlist(alist_any, use.names = FALSE)
+        if (length(flat_any) > 0) {
+          tab_any <- sort(table(flat_any), decreasing = TRUE)
 
-          # merge into sampled nodes
+          # single-author papers: length==1; count once in value(first/last incl. single)
+          singles <- unlist(lapply(alist_any, function(a) if (length(a)==1) a else character(0)), use.names = FALSE)
+          tab_s <- if (length(singles) > 0) table(singles) else table(character(0))
+
+          # Full first/last non-single edge strengths from the full author edge table.
+          ed_full <- rv$author_edges_full %||% data_edges
+          if (!is.null(ed_full) && is.data.frame(ed_full) && nrow(ed_full) > 0) {
+            if (!("Leader" %in% names(ed_full)) && "leader" %in% names(ed_full)) ed_full$Leader <- ed_full$leader
+            if (!("Follower" %in% names(ed_full)) && "follower" %in% names(ed_full)) ed_full$Follower <- ed_full$follower
+            if (!("WCD" %in% names(ed_full))) ed_full$WCD <- 1
+            ed_full$Leader <- trimws(as.character(ed_full$Leader))
+            ed_full$Follower <- trimws(as.character(ed_full$Follower))
+            ed_full$WCD <- suppressWarnings(as.numeric(ed_full$WCD))
+            ed_full <- ed_full[nzchar(ed_full$Leader) & nzchar(ed_full$Follower) & is.finite(ed_full$WCD) & ed_full$WCD > 0, , drop=FALSE]
+          } else {
+            ed_full <- data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors=FALSE)
+          }
+          fa_full <- if (nrow(ed_full)) tapply(ed_full$WCD, ed_full$Leader, sum, na.rm=TRUE) else numeric(0)
+          la_full <- if (nrow(ed_full)) tapply(ed_full$WCD, ed_full$Follower, sum, na.rm=TRUE) else numeric(0)
+
+          all_names_metric <- sort(unique(c(names(tab_any), names(tab_s), names(fa_full), names(la_full))))
+          df_pub <- data.frame(name = all_names_metric, stringsAsFactors = FALSE)
+          df_pub$n_pubmed <- as.integer(tab_any[df_pub$name]); df_pub$n_pubmed[is.na(df_pub$n_pubmed)] <- 0L
+          df_pub$n_byline <- df_pub$n_pubmed
+          df_pub$single_author <- as.integer(tab_s[df_pub$name]); df_pub$single_author[is.na(df_pub$single_author)] <- 0L
+          df_pub$FA <- as.numeric(fa_full[df_pub$name]); df_pub$FA[!is.finite(df_pub$FA)] <- 0
+          df_pub$LA <- as.numeric(la_full[df_pub$name]); df_pub$LA[!is.finite(df_pub$LA)] <- 0
+          df_pub$value2 <- as.numeric(df_pub$FA + df_pub$LA)
+          df_pub$value <- as.numeric(df_pub$value2 + df_pub$single_author)
+          df_pub$value_strength <- df_pub$value2
+          df_pub$self_coword <- df_pub$single_author
+
+          # merge into sampled nodes and replace stale Top20/one-link metrics.
           if (!("name" %in% names(rv$author_nodes))) {
             if ("label" %in% names(rv$author_nodes)) rv$author_nodes$name <- as.character(rv$author_nodes$label)
             else if ("id" %in% names(rv$author_nodes)) rv$author_nodes$name <- as.character(rv$author_nodes$id)
           }
           rv$author_nodes$name <- as.character(rv$author_nodes$name)
-          # avoid duplicate columns from prior runs
-          if ("n_pubmed" %in% names(rv$author_nodes)) rv$author_nodes$n_pubmed <- NULL
-          if ("single_author" %in% names(rv$author_nodes)) rv$author_nodes$single_author <- NULL
-          rv$author_nodes <- merge(rv$author_nodes, df_pub, by="name", all.x=TRUE)
-          rv$author_nodes$n_pubmed[is.na(rv$author_nodes$n_pubmed)] <- 0L
-          rv$author_nodes$single_author[is.na(rv$author_nodes$single_author)] <- 0L
-
-          # defensive: if merge created suffix columns, coalesce
-          if ("n_pubmed.x" %in% names(rv$author_nodes) || "n_pubmed.y" %in% names(rv$author_nodes)) {
-            nx <- if ("n_pubmed.x" %in% names(rv$author_nodes)) rv$author_nodes[["n_pubmed.x"]] else NA
-            ny <- if ("n_pubmed.y" %in% names(rv$author_nodes)) rv$author_nodes[["n_pubmed.y"]] else NA
-            rv$author_nodes$n_pubmed <- ifelse(!is.na(ny), ny, nx)
-            rv$author_nodes$n_pubmed[is.na(rv$author_nodes$n_pubmed)] <- 0L
-            rv$author_nodes[["n_pubmed.x"]] <- NULL
-            rv$author_nodes[["n_pubmed.y"]] <- NULL
+          for (.cc in c("n_pubmed","n_byline","single_author","FA","LA","value2","value","value_strength","self_coword")) {
+            if (.cc %in% names(rv$author_nodes)) rv$author_nodes[[.cc]] <- NULL
           }
-          if ("single_author.x" %in% names(rv$author_nodes) || "single_author.y" %in% names(rv$author_nodes)) {
-            sx <- if ("single_author.x" %in% names(rv$author_nodes)) rv$author_nodes[["single_author.x"]] else 0L
-            sy <- if ("single_author.y" %in% names(rv$author_nodes)) rv$author_nodes[["single_author.y"]] else 0L
-            rv$author_nodes$single_author <- ifelse(!is.na(sy), sy, sx)
-            rv$author_nodes$single_author[is.na(rv$author_nodes$single_author)] <- 0L
-            rv$author_nodes[["single_author.x"]] <- NULL
-            rv$author_nodes[["single_author.y"]] <- NULL
+          rv$author_nodes <- merge(rv$author_nodes, df_pub, by="name", all.x=TRUE)
+          for (.cc in c("n_pubmed","n_byline","single_author","FA","LA","value2","value","value_strength","self_coword")) {
+            if (.cc %in% names(rv$author_nodes)) {
+              rv$author_nodes[[.cc]] <- suppressWarnings(as.numeric(rv$author_nodes[[.cc]]))
+              rv$author_nodes[[.cc]][!is.finite(rv$author_nodes[[.cc]])] <- 0
+            }
           }
         }
       }
 
-      rv$author_nodes <- .augment_author_nodes(rv$author_nodes, rv$author_edges_full %||% rv$author_edges)
+      # Recompute displayed Author metrics from the same one-link Top20 edges.
+      # Full first/last edges are kept separately as rv$author_edges_full for downloads only.
+      rv$author_edges <- .author_enforce_single_edge_per_follower(rv$author_nodes, rv$author_edges)
+      rv$author_nodes <- .augment_author_nodes(rv$author_nodes, rv$author_edges)
 # debug top-3 (console)
       cat('\n[CHECK] Top-3 author nodes20 (name,value,value2,carac,ssi,a_star1):\n')
       print(utils::head(rv$author_nodes[, intersect(c('name','value','value2','carac','ssi','a_star1'), names(rv$author_nodes)), drop=FALSE], 3))
@@ -4650,6 +10923,25 @@ try({
       rv$inst_list      <- inst_list
       rv$dept_list      <- dept_list
       rv$mesh_list      <- mesh_list
+
+      # Keep per-article MeSH headings in rv$pubmeta for MeSH/year slopegraphs.
+      # The MeSH string is semicolon-separated so headings with commas remain intact.
+      try({
+        mesh_chr <- vapply(mesh_list, function(z){
+          z <- unique(trimws(as.character(z)))
+          z <- z[!is.na(z) & nzchar(z)]
+          paste(z, collapse = "; ")
+        }, character(1))
+        if (is.data.frame(rv$pubmeta) && nrow(rv$pubmeta) > 0) {
+          n_pm <- nrow(rv$pubmeta)
+          if (length(mesh_chr) >= n_pm) {
+            rv$pubmeta$MeSH <- mesh_chr[seq_len(n_pm)]
+          } else {
+            rv$pubmeta$MeSH <- c(mesh_chr, rep("", n_pm - length(mesh_chr)))
+          }
+          addlog("[IO] pubmeta MeSH column added: ", sum(nzchar(rv$pubmeta$MeSH)), " article rows with MeSH")
+        }
+      }, silent = TRUE)
   # remove demographics/general terms
 
       
@@ -4986,8 +11278,8 @@ vn_nodes <- data.frame(
       title = paste0(
         "<b>", nodes$name, "</b>",
         "<br>n(PubMed total)=", ifelse(is.finite(n_total), as.integer(n_total), "NA"),
-        "<br>n(byline appearances)=", nodes$n_byline,
-        "<br>value(first/last incl. single)=", nodes$value,
+        "<br>n(any byline appearance)=", nodes$n_byline,
+        "<br>n(first/last author appearance)=", nodes$value,
         "<br>value2(first/last excl. single)=", nodes$value2,
         "<br>single=value-value2=", nodes$single_author,
         "<br>ratio=value/nPubMedTotal=", ifelse(is.finite(ratio_main), sprintf("%.2f", ratio_main), "NA"),
@@ -5585,6 +11877,124 @@ output$vn_inst <- renderVisNetwork({
   })
 
 # ---- AAC + Kano plot (Author only) ----
+
+  # ---- Safe Top20 and plot helpers for SSplot/Kano tabs ----
+  .safe_top20_nodes <- function(df, n = 20) {
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+    df <- as.data.frame(df, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!("name" %in% names(df))) {
+      if ("id" %in% names(df)) df$name <- as.character(df$id) else df$name <- as.character(df[[1]])
+    }
+    if (!("rank" %in% names(df))) {
+      if ("value" %in% names(df)) {
+        vv <- suppressWarnings(as.numeric(df$value))
+        ord <- order(ifelse(is.finite(vv), vv, -Inf), decreasing = TRUE, na.last = TRUE)
+      } else {
+        ord <- seq_len(nrow(df))
+      }
+      df <- df[ord, , drop = FALSE]
+      df$rank <- seq_len(nrow(df))
+    } else {
+      rr <- suppressWarnings(as.numeric(df$rank))
+      vv <- if ("value" %in% names(df)) suppressWarnings(as.numeric(df$value)) else rep(NA_real_, nrow(df))
+      ord <- order(ifelse(is.finite(rr), rr, Inf),
+                   ifelse(is.finite(vv), -vv, Inf),
+                   na.last = TRUE)
+      df <- df[ord, , drop = FALSE]
+    }
+    utils::head(df, n)
+  }
+
+  .safe_draw_kano_xy <- function(nd, xcol, ycol, sizecol = "value",
+                                 title_txt = "Kano plot",
+                                 xlab = xcol, ylab = ycol,
+                                 label_size = 4,
+                                 vertical = FALSE) {
+    # SAFE BASE-R KANO DRAWER
+    # Purpose: avoid HTML/list/ggplot objects being passed to Shiny text/HTML handlers,
+    # which caused: "不是所有的 is.character(txt) 都是 TRUE".
+    nd <- .safe_top20_nodes(nd, 20)
+    if (!is.data.frame(nd) || nrow(nd) < 2) {
+      plot.new(); text(0.5, 0.5, "Need at least 2 Top20 nodes for Kano plot.", cex = 1.3, font = 2)
+      return(invisible(NULL))
+    }
+    if (!("name" %in% names(nd))) nd$name <- as.character(seq_len(nrow(nd)))
+    if (!("carac" %in% names(nd))) nd$carac <- 1
+    if (!(xcol %in% names(nd))) nd[[xcol]] <- NA_real_
+    if (!(ycol %in% names(nd))) nd[[ycol]] <- NA_real_
+    if (!(sizecol %in% names(nd))) nd[[sizecol]] <- 1
+
+    nd$name <- as.character(nd$name)
+    nd$carac <- as.character(nd$carac)
+    nd[[xcol]] <- suppressWarnings(as.numeric(nd[[xcol]]))
+    nd[[ycol]] <- suppressWarnings(as.numeric(nd[[ycol]]))
+    nd[[sizecol]] <- suppressWarnings(as.numeric(nd[[sizecol]]))
+    nd[[sizecol]][!is.finite(nd[[sizecol]]) | is.na(nd[[sizecol]])] <- 1
+
+    ok <- is.finite(nd[[xcol]]) & is.finite(nd[[ycol]])
+    nd <- nd[ok, , drop = FALSE]
+    if (nrow(nd) < 2) {
+      plot.new(); text(0.5, 0.5, "Need >=2 finite Top20 points for Kano plot.", cex = 1.3, font = 2)
+      return(invisible(NULL))
+    }
+
+    x <- nd[[xcol]]; y <- nd[[ycol]]
+    sx <- nd[[sizecol]]
+    sx[!is.finite(sx)] <- 1
+    sx0 <- sqrt(pmax(sx, 0))
+    mx <- max(sx0, na.rm = TRUE)
+    if (!is.finite(mx) || mx <= 0) mx <- 1
+    cex_pt <- 1.5 + 4.0 * sx0 / mx
+
+    medx <- stats::median(x, na.rm = TRUE)
+    medy <- stats::median(y, na.rm = TRUE)
+    ux <- range(x, medx, finite = TRUE)
+    uy <- range(y, medy, finite = TRUE)
+    dx <- diff(ux); dy <- diff(uy)
+    if (!is.finite(dx) || dx == 0) dx <- max(abs(ux), 1)
+    if (!is.finite(dy) || dy == 0) dy <- max(abs(uy), 1)
+    xlim <- ux + c(-0.16, 0.22) * dx
+    ylim <- uy + c(-0.20, 0.22) * dy
+
+    cls <- sort(unique(nd$carac))
+    pal <- grDevices::hcl.colors(max(3, length(cls)), "Dark 3")
+    col_map <- setNames(pal[seq_along(cls)], cls)
+    bg <- col_map[nd$carac]
+
+    oldpar <- par(no.readonly = TRUE)
+    on.exit(par(oldpar), add = TRUE)
+    par(mar = c(6.0, 6.5, 5.5, 3.0), xpd = NA, family = "sans")
+    plot(x, y, type = "n", xlim = xlim, ylim = ylim,
+         xlab = xlab, ylab = ylab, main = title_txt,
+         cex.main = 1.8, cex.lab = 1.55, cex.axis = 1.25,
+         font.main = 2, font.lab = 2)
+    grid(col = "grey88", lty = 1)
+    abline(v = medx, h = medy, lty = 2, col = "red", lwd = 2.4)
+    if (length(unique(x)) >= 2 && length(unique(y)) >= 2) {
+      try(abline(stats::lm(y ~ x), col = "blue", lwd = 3.6), silent = TRUE)
+    }
+
+    # Kano-style two wings through the median cross, scaled to current data range.
+    slope1 <- dy / dx
+    abline(a = medy - slope1 * medx, b = slope1, lty = 3, col = "grey45", lwd = 1.6)
+    abline(a = medy + slope1 * medx, b = -slope1, lty = 3, col = "grey45", lwd = 1.6)
+
+    # Two reference circles/ellipses around the center. Base R circles distort if x/y scales differ;
+    # use ellipse coordinates so the guides stay visible in a tall plot.
+    th <- seq(0, 2*pi, length.out = 241)
+    for (rr in c(0.28, 0.50)) {
+      lines(medx + rr * dx * cos(th), medy + rr * dy * sin(th), lty = 2, col = "grey50", lwd = 1.3)
+    }
+
+    points(x, y, pch = 21, bg = bg, col = "black", cex = cex_pt, lwd = 1.8)
+    text(x, y, labels = nd$name, pos = 3,
+         cex = max(0.75, min(1.3, as.numeric(label_size) / 4.0)),
+         font = 2, col = "black")
+    legend("topright", legend = paste("Cluster", cls), pt.bg = col_map[cls],
+           pch = 21, bty = "n", cex = 1.15, text.font = 2, title = "Cluster")
+    invisible(TRUE)
+  }
+
   output$kano_aac_header <- renderText({
     d <- .get_domain(input$kano_domain)
     sprintf("AAC(value)=%.2f | AAC(value2)=%.2f | AAC(SS)=%.2f | AAC(a*)=%.2f",
@@ -5593,119 +12003,70 @@ output$vn_inst <- renderVisNetwork({
   
   output$kano_vv2_plot <- renderPlot({
     d <- .get_domain(input$kano_domain)
-    nd <- d$nodes
+    nd <- .safe_top20_nodes(d$nodes, 20)
     ed <- d$edges
-
-    validate(need(is.data.frame(nd) && nrow(nd) > 1, "Need at least 2 nodes for Kano plot."))
+    validate(need(is.data.frame(nd) && nrow(nd) > 1, "Need at least 2 Top20 nodes for Kano plot."))
     if (!("value2" %in% names(nd))) {
       if (exists("compute_value2_strength", mode="function")) {
         nd <- tryCatch(compute_value2_strength(nd, ed), error=function(e) nd)
-      } else {
-        plot.new(); text(0.5,0.5,"value2 not available"); return()
       }
     }
+    if (!("value2" %in% names(nd))) nd$value2 <- nd$value
+    if (!("value" %in% names(nd))) nd$value <- 1
+    title_txt <- sprintf("Kano: value vs value2 | AAC=%.2f | AAC2=%.2f",
+                         as.numeric(d$AAC_value), as.numeric(d$AAC_value2))
+    .safe_draw_kano_xy(nd, xcol = "value2", ycol = "value", sizecol = "value",
+                       title_txt = title_txt, xlab = "value2", ylab = "value",
+                       label_size = input$kano_label_size %||% 4,
+                       vertical = TRUE)
+  }, height = 1050)
 
-    # ensure carac exists
-    if (!("carac" %in% names(nd))) nd$carac <- 1
-
-    title_txt <- sprintf("Kano: value vs value2 | AAC=%.2f | AAC2=%.2f", as.numeric(d$AAC_value), as.numeric(d$AAC_value2))
-    if (exists("plot_kano_real_xy", mode="function")) {
-      plot_kano_real_xy(nd, edges = ed, xcol = "value2", ycol = "value", sizecol = "value",
-                        title_txt = title_txt, label_size = input$kano_label_size %||% 4)
-    } else if (exists("plot_kano_real", mode="function")) {
-      print(plot_kano_real(nd, edges = ed, title_txt = title_txt))
-    } else {
-      plot(nd$value2, nd$value, main=title_txt, xlab="value2", ylab="value")
-    }
-  }, height = 650)
 output$kano_ss_astar_plot <- renderPlot({
     d <- .get_domain(input$kano_domain)
-    nd <- d$nodes
-    validate(need(is.data.frame(nd) && nrow(nd) > 1, "Need at least 2 nodes for Kano plot."))
+    nd <- .safe_top20_nodes(d$nodes, 20)
+    validate(need(is.data.frame(nd) && nrow(nd) > 1, "Need at least 2 Top20 nodes for Kano plot."))
 
-    # normalize columns
     if (!("ssi" %in% names(nd)) && ("SSi" %in% names(nd))) nd$ssi <- nd$SSi
     if (!("a_star1" %in% names(nd)) && ("a_star" %in% names(nd))) nd$a_star1 <- nd$a_star
-
-    # a* fallback
     if (!("a_star1" %in% names(nd))) {
       if ("a_i" %in% names(nd)) nd$a_star1 <- 1/(1+as.numeric(nd$a_i)) else nd$a_star1 <- NA_real_
     }
-
-    # carac safeguard (Kano core requires it)
-    if (!("carac" %in% names(nd))) nd$carac <- 1L
-    nd$carac <- suppressWarnings(as.integer(as.character(nd$carac)))
-    nd$carac[is.na(nd$carac)] <- 1L
-
-    nd$ssi     <- suppressWarnings(as.numeric(nd$ssi))
+    nd$ssi <- suppressWarnings(as.numeric(nd$ssi))
     nd$a_star1 <- suppressWarnings(as.numeric(nd$a_star1))
-
-    ok <- is.finite(nd$ssi) & is.finite(nd$a_star1)
-    validate(need(sum(ok) >= 2, "Need >=2 finite points for SS vs a* Kano."))
-
+    if (!("value" %in% names(nd))) nd$value <- 1
     aac_ss  <- if (!is.null(d$AAC_ss)) as.numeric(d$AAC_ss) else safe_AAC(nd$ssi)
-    aac_ast <- if (!is.null(d$AAC_a_star)) as.numeric(d$AAC_a_star) else if (!is.null(d$AAC_a_star1)) as.numeric(d$AAC_a_star1) else safe_AAC(nd$a_star1)
+    aac_ast <- if (!is.null(d$AAC_a_star)) as.numeric(d$AAC_a_star) else safe_AAC(nd$a_star1)
     title_txt <- sprintf("Kano: SS vs a* | AAC(SS)=%.2f | AAC(a*)=%.2f", aac_ss, aac_ast)
 
-    tryCatch({
-      if (exists("plot_kano_real_xy", mode="function")) {
-        # true Kano: x=a*, y=SS
-        plot_kano_real_xy(nd[ok, , drop=FALSE], edges = NULL,
-                          xcol = "a_star1", ycol = "ssi", sizecol = "ssi",
-                          title_txt = title_txt, label_size = input$kano_label_size %||% 4,
-                          xlab="a*", ylab="SS")
-      } else {
-        plot(nd$a_star1[ok], nd$ssi[ok], xlab="a*", ylab="SS", main=title_txt)
-        text(nd$a_star1[ok], nd$ssi[ok], labels=nd$name[ok], pos=4, cex=0.8)
-      }
-    }, error = function(e){
-      plot(nd$a_star1[ok], nd$ssi[ok], xlab="a*", ylab="SS", main=title_txt)
-      text(nd$a_star1[ok], nd$ssi[ok], labels=nd$name[ok], pos=4, cex=0.8)
-    })
-  }, height = 650)
+    .safe_draw_kano_xy(nd, xcol = "a_star1", ycol = "ssi", sizecol = "value",
+                       title_txt = title_txt, xlab = "a*", ylab = "SS",
+                       label_size = input$kano_label_size %||% 4,
+                       vertical = TRUE)
+  }, height = 1050)
 
-  # ---- SS Kano tab (real Kano: 2 wings + 2 circles; bubble=value; color=cluster) ----
+
+  # ---- SS Kano tab  # ---- SS Kano tab (real Kano: 2 wings + 2 circles; bubble=value; color=cluster) ----
   output$ss_kano_plot <- renderPlot({
     dom <- input$ss_kano_domain %||% "Author"
     d <- .get_domain(dom)
-    nd <- d$nodes
-    validate(need(is.data.frame(nd) && nrow(nd) > 1, "Need at least 2 nodes."))
+    nd <- .safe_top20_nodes(d$nodes, 20)
+    validate(need(is.data.frame(nd) && nrow(nd) > 1, "Need at least 2 Top20 nodes."))
 
-    # normalize columns
     if (!("ssi" %in% names(nd)) && ("SSi" %in% names(nd))) nd$ssi <- nd$SSi
     if (!("a_star1" %in% names(nd)) && ("a_star" %in% names(nd))) nd$a_star1 <- nd$a_star
     if (!("a_star1" %in% names(nd)) && ("a_i" %in% names(nd))) nd$a_star1 <- 1/(1+as.numeric(nd$a_i))
-
     nd$ssi     <- suppressWarnings(as.numeric(nd$ssi))
     nd$a_star1 <- suppressWarnings(as.numeric(nd$a_star1))
-    nd$value   <- suppressWarnings(as.numeric(nd$value))
-    if (!("carac" %in% names(nd))) nd$carac <- "C1"
-    nd$carac <- as.character(nd$carac)  # keep label; do NOT coerce to integer
-
-    ok <- is.finite(nd$ssi) & is.finite(nd$a_star1)
-    validate(need(sum(ok) >= 2, "Need >=2 finite points."))
-
-    aac_ss  <- safe_AAC(nd$ssi[ok])
-    aac_ast <- safe_AAC(nd$a_star1[ok])
+    if (!("value" %in% names(nd))) nd$value <- 1
+    aac_ss  <- safe_AAC(nd$ssi)
+    aac_ast <- safe_AAC(nd$a_star1)
     title_txt <- sprintf("SS Kano: SS vs a* | AAC(SS)=%.2f | AAC(a*)=%.2f", aac_ss, aac_ast)
 
-    if (exists("plot_kano_real_xy", mode="function")) {
-      plot_kano_real_xy(nd[ok, , drop=FALSE], edges = NULL,
-                        xcol="a_star1", ycol="ssi", sizecol="value",
-                        title_txt = title_txt, label_size = input$ss_kano_label_size %||% 4,
-                        xlab="a*", ylab="SS")
-    } else if (exists("plot_kano_real", mode="function")) {
-      # fallback: rename to canonical value/value2 so plot_kano_real can draw wings/circles
-      tmp <- nd[ok, , drop=FALSE]
-      tmp$value2 <- tmp$a_star1
-      tmp$value  <- tmp$ssi
-      tmp$size_plot <- pmax(1, tmp$value)  # bubble by value
-      print(plot_kano_real(tmp, edges = NULL, title_txt = title_txt))
-    } else {
-      plot(nd$a_star1[ok], nd$ssi[ok], xlab="a*", ylab="SS", main=title_txt)
-      text(nd$a_star1[ok], nd$ssi[ok], labels=nd$name[ok], pos=4, cex=0.8)
-    }
-  }, height = 700)
+    .safe_draw_kano_xy(nd, xcol = "a_star1", ycol = "ssi", sizecol = "value",
+                       title_txt = title_txt, xlab = "a*", ylab = "SS",
+                       label_size = input$ss_kano_label_size %||% 4,
+                       vertical = TRUE)
+  }, height = 1050)
 
 
 output$taaa_table <- renderTable({
@@ -5736,6 +12097,371 @@ output$taaa_confusion_table <- renderTable({
   validate(need(!is.null(rv$taaa_conf_df) && is.data.frame(rv$taaa_conf_df) && nrow(rv$taaa_conf_df) > 0,
                 "Shown when a Profile column exists and theme count matches the profile count."))
   rv$taaa_conf_df
+}, striped = TRUE, bordered = TRUE, hover = TRUE, spacing = "s")
+
+
+# ---- TAAA2: PubMedBERT/SPECTER2 semantic clustering demo ----
+.taaa2_clean_text <- function(x) {
+  x <- tolower(as.character(x %||% ""))
+  x <- gsub("[’']s\\b", "", x, perl = TRUE)
+  x <- gsub("[^a-z0-9\\- ]+", " ", x, perl = TRUE)
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+# TAAA2 term purification: aligned with en_tail_keyword_engine.R style.
+# Removes verbs, weak adjectives/adverbs, metadata words, numbers, and generic fragments
+# before TF-IDF cluster labels are generated.
+.taaa2_stop_tokens <- unique(c(
+  "the", "and", "for", "with", "using", "from", "into", "can", "could", "may", "might",
+  "in", "of", "to", "a", "an", "on", "by", "as", "or", "if", "via", "per", "than",
+  "is", "are", "was", "were", "be", "been", "being", "am", "do", "does", "did",
+  "this", "that", "these", "those", "which", "whose", "while", "whereas", "because",
+  "before", "after", "between", "among", "within", "without", "under", "over", "through",
+  "also", "moreover", "furthermore", "however", "therefore", "although", "another", "many", "all",
+  "used", "use", "uses", "based", "shown", "found", "performed", "included", "including", "according",
+  "study", "studies", "article", "articles", "paper", "papers", "research", "result", "results",
+  "method", "methods", "material", "materials", "discussion", "conclusion", "abstract", "introduction",
+  "keyword", "keywords", "reference", "references", "bibliography", "metadata", "author", "journal",
+  "doi", "pmid", "pmcid", "http", "https", "www", "html", "xml", "json", "csv", "tsv", "xlsx", "xls",
+  "pdf", "docx", "org", "com", "io", "gov", "edu", "raw", "github", "open", "access",
+  "analysis", "model", "models", "data", "dataset", "datasets", "online", "assessment", "evaluate", "evaluation",
+  "number", "numbers", "view", "views", "hospital", "hospitals", "cat", "0", "1", "2", "3", "4", "5",
+  "significant", "different", "important", "possible", "potential", "overall", "individual", "given", "short"
+))
+
+.taaa2_bad_starts <- c(
+  "accompanied", "automatically", "collapsible", "correspondence", "facilitating", "further",
+  "generating", "hierarchical", "inputs", "institutional", "intuitive", "optional", "despite",
+  "including", "maintains", "demonstrating", "analyzing", "combining", "providing", "enabling",
+  "supporting", "suitability", "predicting", "evaluating", "assessing"
+)
+
+.taaa2_good_single_suffix <- "(ability|ibility|bility|ization|isation|ology|omics|itis|osis|therapy|diagnosis|dermatology|bibliometrics|scientometrics)$"
+
+.taaa2_is_bad_term <- function(term) {
+  x <- .taaa2_clean_text(term)
+  if (!nzchar(x)) return(TRUE)
+  if (grepl("[0-9]", x, perl = TRUE)) return(TRUE)
+
+  toks <- unlist(strsplit(x, "\\s+", perl = TRUE), use.names = FALSE)
+  toks <- toks[nzchar(toks)]
+  if (!length(toks)) return(TRUE)
+
+  # Remove phrases containing generic stop/verb/meta tokens.
+  if (any(toks %in% .taaa2_stop_tokens)) return(TRUE)
+
+  # Remove very short non-abbreviation tokens.
+  keep_short <- c("ai", "nlp", "r", "us", "uk")
+  if (any(nchar(toks) <= 2L & !(toks %in% keep_short))) return(TRUE)
+
+  # Remove broken fragments and non-word fragments.
+  bad_frag <- c("tion", "zation", "ization", "sion", "ment", "ity", "ware", "analy", "port", "im", "sum", "marization")
+  if (any(toks %in% bad_frag)) return(TRUE)
+  if (any(!grepl("^[a-z][a-z-]*$", toks, perl = TRUE))) return(TRUE)
+
+  # Remove phrases starting with weak verbs/adjectives/adverbs.
+  if (grepl(paste0("^(" , paste(.taaa2_bad_starts, collapse = "|"), ")\\b"), x, perl = TRUE)) return(TRUE)
+
+  # Single-word terms must be domain-like or meaningful suffix terms.
+  if (length(toks) == 1L) {
+    if (toks %in% c("ai", "nlp", "dermatology", "teledermatology", "eczema", "psoriasis", "melanoma", "biologics", "keratinocytes", "bibliometrics", "citations", "rasch", "kidmap")) return(FALSE)
+    if (!grepl(.taaa2_good_single_suffix, x, perl = TRUE)) return(TRUE)
+  }
+
+  FALSE
+}
+
+.taaa2_make_ngrams <- function(text, n = 1:4) {
+  words <- unlist(strsplit(.taaa2_clean_text(text), "\\s+", perl = TRUE), use.names = FALSE)
+  words <- words[nzchar(words)]
+  words <- words[!words %in% .taaa2_stop_tokens]
+
+  out <- character(0)
+  for (k in n) {
+    if (length(words) >= k) {
+      out <- c(out, sapply(seq_len(length(words) - k + 1), function(i) {
+        paste(words[i:(i + k - 1)], collapse = " ")
+      }))
+    }
+  }
+  out <- unique(out)
+  out <- out[!vapply(out, .taaa2_is_bad_term, logical(1))]
+  out
+}
+
+.taaa2_cosine_similarity <- function(x) {
+  x_norm <- x / sqrt(rowSums(x^2))
+  x_norm %*% t(x_norm)
+}
+
+.taaa2_demo_data <- function() {
+  data.frame(
+    id = paste0("P", 1:8),
+    title = c(
+      "Artificial intelligence in dermatology diagnosis",
+      "Deep learning for melanoma image classification",
+      "Atopic dermatitis and immune dysregulation",
+      "Biologic therapy for psoriasis patients",
+      "Teledermatology for remote skin disease consultation",
+      "Digital health platforms in dermatology care",
+      "Keratinocyte inflammation in eczema",
+      "Machine learning prediction of skin cancer"
+    ),
+    abstract = c(
+      "AI models can support clinical diagnosis using dermoscopic images.",
+      "Convolutional neural networks improve melanoma detection from skin images.",
+      "Atopic dermatitis involves immune pathways and chronic inflammation.",
+      "Biologics targeting cytokines improve outcomes in psoriasis treatment.",
+      "Teledermatology enables remote consultation and access to dermatology care.",
+      "Digital health tools improve communication and dermatology service delivery.",
+      "Keratinocytes contribute to inflammatory responses in eczema lesions.",
+      "Machine learning algorithms predict skin cancer risk using clinical features."
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+.taaa2_find_col <- function(df, candidates) {
+  if (!is.data.frame(df)) return(NA_character_)
+  nm <- names(df)
+  low <- tolower(nm)
+  hit <- match(tolower(candidates), low)
+  hit <- hit[!is.na(hit)]
+  if (length(hit)) nm[hit[1]] else NA_character_
+}
+
+.taaa2_prepare_pubmed_data <- function(rv) {
+  candidates <- list(pubmeta = rv$pubmeta, pmid_tbl = rv$pmid_tbl)
+
+  for (nm in names(candidates)) {
+    df <- candidates[[nm]]
+    if (!is.data.frame(df) || nrow(df) == 0) next
+
+    title_col <- .taaa2_find_col(df, c("Title", "ArticleTitle", "article_title", "TI", "title"))
+    abs_col   <- .taaa2_find_col(df, c("Abstract", "AbstractText", "AB", "abstract"))
+    pmid_col  <- .taaa2_find_col(df, c("PMID", "pmid", "id", "ID"))
+    if (is.na(title_col) && is.na(abs_col)) next
+
+    title <- if (!is.na(title_col)) as.character(df[[title_col]]) else rep("", nrow(df))
+    abstract <- if (!is.na(abs_col)) as.character(df[[abs_col]]) else rep("", nrow(df))
+    id <- if (!is.na(pmid_col)) as.character(df[[pmid_col]]) else paste0("P", seq_len(nrow(df)))
+
+    out <- data.frame(id = id, title = title, abstract = abstract, source = nm, stringsAsFactors = FALSE)
+    out$title[is.na(out$title)] <- ""
+    out$abstract[is.na(out$abstract)] <- ""
+    out$text <- trimws(paste(out$title, out$abstract))
+    out <- out[nzchar(out$text), , drop = FALSE]
+    out <- out[!duplicated(out$id), , drop = FALSE]
+    if (nrow(out) >= 3) return(out)
+  }
+
+  out <- .taaa2_demo_data()
+  out$source <- "demo_fallback"
+  out$text <- paste(out$title, out$abstract)
+  out
+}
+
+taaa2_result <- eventReactive(input$run_taaa2, {
+  req(input$taaa2_model)
+
+  shiny::withProgress(message = "Running TAAA2 semantic clustering", value = 0, {
+    shiny::incProgress(0.03, detail = "Checking required R/Python packages")
+
+    validate(
+      need(requireNamespace("reticulate", quietly = TRUE), "Package reticulate is required. Please run install.packages('reticulate')."),
+      need(requireNamespace("uwot", quietly = TRUE), "Package uwot is required."),
+      need(requireNamespace("igraph", quietly = TRUE), "Package igraph is required.")
+    )
+
+    shiny::incProgress(0.07, detail = "Preparing PubMed title and abstract data")
+    papers2 <- .taaa2_prepare_pubmed_data(rv)
+    validate(need(nrow(papers2) >= 3, "TAAA2 requires at least 3 PubMed records with title and/or abstract. Please run Fetch PubMed or upload PubMed data first."))
+
+    model_name <- input$taaa2_model
+    k <- max(2, min(as.integer(input$taaa2_k %||% 3), nrow(papers2) - 1))
+    top_n_edges <- max(1, as.integer(input$taaa2_top_edges %||% 2))
+
+    shiny::incProgress(0.10, detail = "Loading reticulate Python environment")
+    reticulate::use_condaenv("r-transformers", required = TRUE)
+    transformers <- reticulate::import("transformers")
+    torch <- reticulate::import("torch")
+
+    shiny::incProgress(0.10, detail = "Loading PubMedBERT / SPECTER2 model")
+    tokenizer <- transformers$AutoTokenizer$from_pretrained(model_name, use_fast = FALSE)
+    model <- transformers$AutoModel$from_pretrained(model_name, use_safetensors = TRUE)
+    model$eval()
+
+    py$tokenizer <- tokenizer
+    py$model <- model
+    py$torch <- torch
+    py_run_string("\ndef get_taaa2_cls_embedding(text):\n    encoded = tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors='pt')\n    with torch.no_grad():\n        output = model(input_ids=encoded['input_ids'], attention_mask=encoded['attention_mask'])\n    cls_emb = output.last_hidden_state[:, 0, :]\n    return cls_emb.squeeze().detach().cpu().numpy()\n")
+
+    shiny::incProgress(0.25, detail = paste0("Generating semantic embeddings for ", nrow(papers2), " articles"))
+    get_embedding <- function(text) as.numeric(py$get_taaa2_cls_embedding(text))
+    embeddings <- do.call(rbind, lapply(seq_along(papers2$text), function(i) {
+      if (i %% 5 == 0 || i == nrow(papers2)) {
+        shiny::incProgress(0.001, detail = paste0("Embedding article ", i, " of ", nrow(papers2)))
+      }
+      get_embedding(papers2$text[[i]])
+    }))
+    rownames(embeddings) <- papers2$id
+
+    shiny::incProgress(0.10, detail = "Computing cosine similarity and clusters")
+    sim_mat <- .taaa2_cosine_similarity(embeddings)
+    dist_mat <- as.dist(1 - sim_mat)
+
+    set.seed(123)
+    hc <- hclust(dist_mat, method = "ward.D2")
+    papers2$cluster <- cutree(hc, k = k)
+
+    shiny::incProgress(0.10, detail = "Extracting TF-IDF element terms for cluster labels")
+    cluster_docs <- papers2 %>%
+      dplyr::group_by(cluster) %>%
+      dplyr::summarise(cluster_text = paste(text, collapse = " "), .groups = "drop")
+
+    all_terms <- lapply(cluster_docs$cluster_text, .taaa2_make_ngrams)
+    names(all_terms) <- cluster_docs$cluster
+
+    tfidf_table <- do.call(rbind, lapply(seq_along(all_terms), function(i) {
+      terms <- all_terms[[i]]
+      tab <- table(terms)
+      df <- sapply(names(tab), function(term) sum(sapply(all_terms, function(x) term %in% x)))
+      tf <- as.numeric(tab)
+      idf <- log((length(all_terms) + 1) / (df + 1)) + 1
+      data.frame(cluster = as.integer(names(all_terms)[i]), term = names(tab), tfidf = tf * idf, stringsAsFactors = FALSE)
+    }))
+
+    tfidf_table <- tfidf_table %>%
+      dplyr::filter(!vapply(term, .taaa2_is_bad_term, logical(1)))
+
+    # Fallback: if a cluster becomes empty after strict filtering, use cleaned title words
+    # from its centroid article rather than allowing stopwords such as was/were/article.
+    if (!nrow(tfidf_table)) {
+      tfidf_table <- data.frame(cluster = unique(papers2$cluster), term = paste0("Cluster ", unique(papers2$cluster)), tfidf = 1, stringsAsFactors = FALSE)
+    }
+
+    top_terms <- tfidf_table %>%
+      dplyr::group_by(cluster) %>%
+      dplyr::arrange(desc(tfidf), .by_group = TRUE) %>%
+      dplyr::slice_head(n = 5) %>%
+      dplyr::summarise(top_terms = paste(term, collapse = "; "), .groups = "drop")
+
+    nearest_to_centroid <- function(cluster_id) {
+      idx <- which(papers2$cluster == cluster_id)
+      emb <- embeddings[idx, , drop = FALSE]
+      centroid <- colMeans(emb)
+      sims <- as.numeric(emb %*% centroid / (sqrt(rowSums(emb^2)) * sqrt(sum(centroid^2))))
+      idx[which.max(sims)]
+    }
+
+    centroid_titles <- data.frame(
+      cluster = sort(unique(papers2$cluster)),
+      centroid_title = sapply(sort(unique(papers2$cluster)), function(cl) papers2$title[nearest_to_centroid(cl)]),
+      stringsAsFactors = FALSE
+    )
+
+    cluster_labels <- top_terms %>%
+      dplyr::left_join(centroid_titles, by = "cluster") %>%
+      dplyr::mutate(
+        cluster_name = dplyr::case_when(
+          grepl("artificial|deep learning|machine learning|teledermatology|digital|melanoma", top_terms) ~ "AI and Digital Dermatology",
+          grepl("atopic|eczema|keratinocyte|inflammation|immune", top_terms) ~ "Inflammatory Skin Disease",
+          grepl("psoriasis|biologic|therapy|cytokines", top_terms) ~ "Psoriasis Biologic Therapy",
+          TRUE ~ paste("Cluster", cluster)
+        )
+      )
+
+    papers2 <- papers2 %>% dplyr::left_join(cluster_labels[, c("cluster", "cluster_name", "top_terms")], by = "cluster")
+
+    shiny::incProgress(0.10, detail = "Generating UMAP semantic map")
+    set.seed(123)
+    umap_xy <- uwot::umap(embeddings, n_neighbors = 3, min_dist = 0.1, metric = "cosine")
+    papers2$x <- umap_xy[, 1]
+    papers2$y <- umap_xy[, 2]
+
+    shiny::incProgress(0.10, detail = "Building semantic network edges and labels")
+    edge_df <- as.data.frame(as.table(sim_mat))
+    colnames(edge_df) <- c("from", "to", "weight")
+    edge_df <- edge_df %>%
+      dplyr::mutate(from = as.character(from), to = as.character(to), weight = as.numeric(weight)) %>%
+      dplyr::filter(from != to) %>%
+      dplyr::group_by(from) %>%
+      dplyr::arrange(desc(weight), .by_group = TRUE) %>%
+      dplyr::slice_head(n = top_n_edges) %>%
+      dplyr::ungroup() %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(edge_id = paste(sort(c(from, to)), collapse = "_")) %>%
+      dplyr::ungroup() %>%
+      dplyr::distinct(edge_id, .keep_all = TRUE) %>%
+      dplyr::select(from, to, weight)
+
+    node_df <- papers2 %>%
+      dplyr::select(id, title, cluster, cluster_name, top_terms) %>%
+      dplyr::mutate(
+        short_terms = sapply(strsplit(top_terms, ";\\s*"), function(x) paste(head(x, 3), collapse = "; ")),
+        label = paste0(id, "\n", cluster_name, "\n", short_terms)
+      ) %>%
+      dplyr::rename(name = id)
+
+    shiny::incProgress(0.05, detail = "Finalizing TAAA2 outputs")
+    list(
+      papers = papers2,
+      source = unique(papers2$source)[1],
+      labels = cluster_labels,
+      embeddings = embeddings,
+      sim_mat = sim_mat,
+      edge_df = edge_df,
+      node_df = node_df,
+      model_name = model_name,
+      top_n_edges = top_n_edges
+    )
+  })
+})
+
+output$taaa2_umap_plot <- renderPlot({
+  res <- taaa2_result()
+  validate(need(!is.null(res$papers), "Click Run TAAA2 to generate the semantic clustering map."))
+  ggplot2::ggplot(res$papers, ggplot2::aes(x = x, y = y, label = id, color = cluster_name)) +
+    ggplot2::geom_point(size = 4) +
+    ggplot2::geom_text(vjust = -0.8, fontface = "bold") +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(title = paste("TAAA2 Document Clustering Using", res$model_name), color = "Cluster label")
+}, height = 560)
+
+output$taaa2_network_plot <- renderPlot({
+  res <- taaa2_result()
+  validate(need(!is.null(res$edge_df) && nrow(res$edge_df) > 0, "No network edges were generated."))
+  g <- igraph::graph_from_data_frame(res$edge_df, vertices = res$node_df, directed = FALSE)
+  set.seed(123)
+  lay <- igraph::layout_with_fr(g)
+  cls <- as.factor(igraph::V(g)$cluster_name)
+  pal <- grDevices::rainbow(length(levels(cls)))
+  cols <- pal[as.integer(cls)]
+  plot(g,
+       layout = lay,
+       vertex.color = cols,
+       vertex.size = 18,
+       vertex.label = igraph::V(g)$label,
+       vertex.label.cex = 0.75,
+       vertex.label.font = 2,
+       edge.width = pmax(1, igraph::E(g)$weight * 2.5),
+       edge.color = grDevices::adjustcolor("gray40", alpha.f = 0.55),
+       main = paste0("TAAA2 Semantic Similarity Network: top ", res$top_n_edges, " links per article"))
+  legend("topright", legend = levels(cls), col = pal, pch = 19, bty = "n", cex = 0.9)
+}, height = 660)
+
+output$taaa2_article_table <- renderTable({
+  res <- taaa2_result()
+  validate(need(!is.null(res$papers), "Click Run TAAA2 to generate the article table."))
+  res$papers[, c("id", "title", "cluster", "cluster_name")]
+}, striped = TRUE, bordered = TRUE, hover = TRUE, spacing = "s")
+
+output$taaa2_cluster_label_table <- renderTable({
+  res <- taaa2_result()
+  validate(need(!is.null(res$labels), "Click Run TAAA2 to generate cluster labels."))
+  res$labels
 }, striped = TRUE, bordered = TRUE, hover = TRUE, spacing = "s")
 
 output$lotka_plot <- renderPlot({
@@ -5870,7 +12596,11 @@ output$lotka_chisq_table <- renderTable({
     if (!length(doms)) doms <- c("Author (1st+Last)","Country")
     ch <- character(0)
     for (d in doms) {
-      top <- .get_domain_top20(rv, d, n = 10)
+      top <- if (tolower(d) %in% c("mesh", "mesh term", "meshterm")) {
+        .get_mesh_top_by_pubmeta_or_list(rv, n = 10)
+      } else {
+        .get_domain_top20(rv, d, n = 10)
+      }
       if (length(top)) ch <- c(ch, paste0(d, "::", top))
     }
     ch <- unique(ch)
@@ -5949,7 +12679,11 @@ observeEvent(list(input$yc_domains, rv$author_nodes, rv$country_nodes, rv$statep
     # build choices = Domain::Item (Top20 each)
     ch <- character(0)
     for (d in doms) {
-      top <- .get_domain_top20(rv, d, n = 10)
+      top <- if (tolower(d) %in% c("mesh", "mesh term", "meshterm")) {
+        .get_mesh_top_by_pubmeta_or_list(rv, n = 10)
+      } else {
+        .get_domain_top20(rv, d, n = 10)
+      }
       if (length(top)) {
         ch <- c(ch, paste0(d, "::", top))
       }
@@ -6156,6 +12890,100 @@ observeEvent(list(input$yc_domains, rv$author_nodes, rv$country_nodes, rv$statep
     DT::datatable(out, options=list(pageLength=10, scrollX=TRUE))
   })
 
+
+  # ---- Slope tab: app(708).R-style combo entity Top10 over years ----
+  .slope_combo_selected_domain <- reactive({
+    dom <- input$slope_combo_entity_domain %||% "Author"
+    if (isTRUE(input$slope_combo_sync_combo)) {
+      cd <- input$combo_domain %||% dom
+      cd <- as.character(cd)
+      # Combo tab may use Journal/Year; slope year-count needs Journal.
+      if (identical(cd, "Journal/Year")) cd <- "Journal"
+      if (identical(cd, "Year/Articles")) cd <- "Year"
+      if (identical(cd, "Term/Year")) cd <- "MeSH"
+      allowed <- c("Author","Journal","Country","State/Province","Institute","Department","MeSH")
+      if (cd %in% allowed) dom <- cd
+    }
+    dom
+  })
+
+  .build_slope_combo_entity_counts <- reactive({
+    req(rv$pubmeta)
+    dom <- .slope_combo_selected_domain()
+    recent_n <- input$slope_combo_recent_years %||% 10
+    yc <- compute_combo_year_counts(
+      rv,
+      domains = c(dom),
+      recent_n_years = recent_n
+    )
+    if (is.null(yc) || !is.data.frame(yc) || !nrow(yc)) return(data.frame())
+
+    # Guarantee Top10 by total count in selected entity domain.
+    top_items <- yc |>
+      dplyr::group_by(domain, item) |>
+      dplyr::summarise(total = sum(Count, na.rm = TRUE), .groups = "drop") |>
+      dplyr::arrange(dplyr::desc(total), item) |>
+      dplyr::slice_head(n = 10)
+
+    yc <- yc[yc$domain %in% top_items$domain & yc$item %in% top_items$item, , drop = FALSE]
+    yc
+  })
+
+  output$plot_slope_combo_entity_top10 <- renderPlot({
+    yc <- .build_slope_combo_entity_counts()
+    validate(need(is.data.frame(yc) && nrow(yc) > 0,
+                  "No slopegraph data yet. Run analysis first and select an entity domain with Year data."))
+
+    st <- summarize_prepost_ttest2(yc)
+    yc$group_label <- paste0(yc$domain, "::", yc$item)
+
+    df_s <- yc[, c("group_label", "Year", "Count")]
+    names(df_s) <- c("itemlab", "Year", "Count")
+
+    df_t <- tufte_sort2(df_s, x = "Year", y = "Count", group = "itemlab", min.space = 0.05)
+
+    yrs <- sort(unique(as.character(df_s$Year)))
+    if (all(grepl("^[0-9]{4}$", yrs))) yrs <- as.character(sort(as.integer(yrs)))
+    df_t$x <- factor(as.character(df_t$x), levels = yrs)
+
+    print(plot_slopegraph2(
+      df_t,
+      st = st,
+      title = paste0(.slope_combo_selected_domain(), " Top10 slopegraph over recent ",
+                     input$slope_combo_recent_years %||% 10, " years"),
+      label_digits = 0
+    ))
+  })
+
+  output$tbl_slope_combo_entity_top10 <- DT::renderDT({
+    yc <- .build_slope_combo_entity_counts()
+    validate(need(is.data.frame(yc) && nrow(yc) > 0, "No year-count data."))
+
+    yc$group_label <- paste0(yc$domain, "::", yc$item)
+    st <- summarize_prepost_ttest2(yc)
+    if (is.null(st) || !nrow(st)) {
+      st <- unique(yc[, c("domain", "item")])
+      st$mean_pre <- st$mean_post <- st$pval <- NA_real_
+      st$pval_fmt <- NA_character_
+      st$trend <- "flat"
+    }
+    st$group_label <- paste0(st$domain, "::", st$item)
+
+    wide <- reshape2::dcast(yc, group_label + domain + item ~ Year, value.var = "Count", fill = 0)
+    out <- merge(
+      st[, c("group_label", "mean_pre", "mean_post", "pval", "pval_fmt", "trend")],
+      wide,
+      by = "group_label",
+      all.x = TRUE
+    )
+    out$pval_num <- out$pval
+    out$pval <- out$pval_fmt
+    out <- out[order(is.na(out$pval_num), out$pval_num, -out$mean_post), , drop = FALSE]
+    DT::datatable(out, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+  })
+
+
+
 output$vn_journal_year <- renderVisNetwork({
       req(rv$pubmeta)
       df <- rv$pubmeta
@@ -6299,6 +13127,14 @@ if ("value2" %in% names(nd)) {
   nd$value2[!is.finite(nd$value2)] <- 0
 }
 
+# Force SSplot to show only FLCA-MA-SIL Top20 nodes.
+# nodes0 keeps the full domain for footer totals; sil_df/nodes used by render_panel are Top20.
+nd_full <- nd
+sil_df <- .safe_top20_nodes(sil_df, 20)
+sil_df$value[!is.finite(sil_df$value) | sil_df$value < 1] <- 1
+sil_df$value2[!is.finite(sil_df$value2)] <- 0
+nd <- sil_df
+
 # clusterwise summary for SSplot; add Q summaries from appwos.R
 clv <- unique(stats::na.omit(sil_df$carac))
 results <- do.call(rbind, lapply(clv, function(cc){
@@ -6350,9 +13186,10 @@ results <- rbind(
     tryCatch(
       render_panel(
         sil_df = sil_df,
-        nodes0 = nd,
+        nodes0 = nd_full,
         results = results,
         nodes = nd,
+        top_n = 20,
         font_scale = (input$ss_font_scale %||% 1.3)
       ),
       error = function(e){
@@ -6365,8 +13202,9 @@ results <- rbind(
       .render_panel_ss(
         sil_df = sil_df,
         results = results,
-        nodes0 = nd,
+        nodes0 = nd_full,
         nodes = nd,
+        top_n = 20,
         font_scale = (input$ss_font_scale %||% 1.3)
       ),
       error = function(e){
@@ -6584,6 +13422,7 @@ for (df in list(sum_country(), sum_inst(), sum_dept(), sum_author(), sum_journal
 })
 output$dl_summary_html <- downloadHandler(
 filename = function(){ sprintf("summary_%s.html", format(Sys.time(), "%Y%m%d_%H%M%S")) },
+contentType = "text/html",
 content  = function(file){
   writeLines(make_summary_html(), con = file, useBytes = TRUE)
 }
@@ -6591,6 +13430,7 @@ content  = function(file){
  # PNG dashboard download
 output$download_summary_png <- downloadHandler(
   filename = function(){ sprintf("summary_%s.png", format(Sys.time(), "%Y%m%d_%H%M%S")) },
+  contentType = "image/png",
   content = function(file){
     if (!requireNamespace("grid", quietly = TRUE)) stop("grid package missing")
     if (!requireNamespace("gridExtra", quietly = TRUE)) stop("gridExtra package missing; install.packages('gridExtra')")
@@ -6631,8 +13471,8 @@ output$download_summary_png <- downloadHandler(
 # =========================
 .get_domain_term_list <- function(rv, domain){
   d <- tolower(domain)
-  # Author byline (all authors)
-  if (d %in% c("author","authors","author_byline","author(byline)","author (byline)")) return(rv$author_lists_all %||% rv$author_lists)
+  # Author domain is restricted to first/last authors for consistency with Author network.
+  if (d %in% c("author","authors","author_byline","author(byline)","author (byline)")) return(rv$author_lists_fl %||% rv$author_lists)
   # Author 1st+Last
   if (grepl("1st", d) || grepl("first", d) || grepl("last", d) || d %in% c("author_fl","author_first_last","author(1st+last)","author (1st+last)")) {
     return(rv$author_lists_fl %||% rv$author_lists_all %||% rv$author_lists)
@@ -6722,6 +13562,36 @@ output$download_summary_png <- downloadHandler(
   x
 }
 
+
+# ---- MeSH-safe helpers for year-count / slopegraph ----
+# MeSH headings may contain commas (e.g., "Ethics, Professional"),
+# so MeSH must be split only by semicolon or pipe, never by comma.
+.split_mesh_terms_safe <- function(x){
+  if (is.null(x)) return(character(0))
+  x <- as.character(x)
+  x <- x[!is.na(x) & nzchar(trimws(x))]
+  if (!length(x)) return(character(0))
+  unlist(strsplit(x, "\\s*[;|]\\s*", perl = TRUE), use.names = FALSE) |>
+    trimws() |>
+    unique()
+}
+
+.get_mesh_top_by_pubmeta_or_list <- function(rv, n = 10){
+  terms <- character(0)
+  if (is.data.frame(rv$pubmeta)) {
+    cn <- intersect(c("MeSH", "Mesh", "MESH", "mesh"), names(rv$pubmeta))
+    if (length(cn)) terms <- .split_mesh_terms_safe(rv$pubmeta[[cn[1]]])
+  }
+  if (!length(terms) && !is.null(rv$mesh_list)) {
+    terms <- unique(unlist(lapply(rv$mesh_list, .split_mesh_terms_safe), use.names = FALSE))
+  }
+  terms <- trimws(terms)
+  terms <- terms[!is.na(terms) & nzchar(terms)]
+  if (!length(terms)) return(character(0))
+  tb <- sort(table(terms), decreasing = TRUE)
+  utils::head(names(tb), min(n, length(tb)))
+}
+
 compute_combo_year_counts <- function(rv, domains, items_keep=NULL, years_keep=NULL, recent_n_years=10){
   # Returns long table: domain,item,Year,Count
   # Robust: derives term-lists from rv$*_list first, then falls back to rv$pubmeta columns.
@@ -6777,6 +13647,14 @@ compute_combo_year_counts <- function(rv, domains, items_keep=NULL, years_keep=N
   out <- list()
   for (dom in domains) {
     tl <- get_terms_fallback(dom)
+
+    # For MeSH, prefer article-level rv$pubmeta$MeSH when available.
+    # This keeps each MeSH string aligned with the article year and prevents
+    # zero-count slopegraphs caused by mesh_nodes/mesh_list mismatch.
+    if (tolower(dom) %in% c("mesh", "mesh term", "meshterm") && is.data.frame(rv$pubmeta)) {
+      cn_mesh <- intersect(c("MeSH", "Mesh", "MESH", "mesh"), names(rv$pubmeta))
+      if (length(cn_mesh)) tl <- as.list(as.character(rv$pubmeta[[cn_mesh[1]]]))
+    }
     if (is.null(tl)) next
 
     # align lengths with years
@@ -6784,10 +13662,16 @@ compute_combo_year_counts <- function(rv, domains, items_keep=NULL, years_keep=N
     tl <- tl[seq_len(n)]
     yv <- yrs[seq_len(n)]
 
-    # choose top20 items
-    top20 <- .get_domain_top20(rv, dom, n = 10)
+    # choose top20 items. For MeSH, select from article-level MeSH terms,
+    # not from rv$mesh_nodes alone, because slope counts must match Year by article.
+    top20 <- if (tolower(dom) %in% c("mesh", "mesh term", "meshterm")) {
+      .get_mesh_top_by_pubmeta_or_list(rv, n = 10)
+    } else {
+      .get_domain_top20(rv, dom, n = 10)
+    }
     if (!length(top20)) {
-      top20 <- utils::head(unique(unlist(lapply(tl, .split_terms2))), 20)
+      splitter <- if (tolower(dom) %in% c("mesh", "mesh term", "meshterm")) .split_mesh_terms_safe else .split_terms2
+      top20 <- utils::head(unique(unlist(lapply(tl, splitter), use.names = FALSE)), 20)
     }
     top20 <- as.character(top20)
     top20 <- top20[!is.na(top20) & nzchar(top20)]
@@ -6805,7 +13689,11 @@ compute_combo_year_counts <- function(rv, domains, items_keep=NULL, years_keep=N
       it_key <- .norm_slope_term(it, dom)
       ct <- tapply(seq_len(n), yv, function(ix){
         sum(vapply(ix, function(i){
-          terms <- .split_terms2(tl[[i]])
+          terms <- if (tolower(dom) %in% c("mesh", "mesh term", "meshterm")) {
+            .split_mesh_terms_safe(tl[[i]])
+          } else {
+            .split_terms2(tl[[i]])
+          }
           term_keys <- .norm_slope_term(terms, dom)
           any(term_keys == it_key)
         }, logical(1)))
@@ -7124,10 +14012,10 @@ output$top1_table <- renderTable({
     Element = top$name,
     MetricValue = .getnum(top, metric_col),
     N_pubmed = .getnum(top, "n_pubmed"),
-    n_byline = .getnum(top, "n_byline"),
+    `n(any byline appearance)` = .getnum(top, "n_byline"),
     value2 = .getnum(top, "value2"),
     self_coword = .getnum(top, "single_author"),
-    value = .getnum(top, "value"),
+    `n(first/last author appearance)` = .getnum(top, "value"),
     FA = .getnum(top, "FA"),
     LA = .getnum(top, "LA"),
     value2_strength = .getnum(top, "value2_strength"),
@@ -7138,9 +14026,1029 @@ output$top1_table <- renderTable({
 }, striped = TRUE, bordered = TRUE, hover = TRUE, spacing = "s")
 
 
+  # ============================================================
+  # FINAL REAL PLOT OVERRIDE (patched: uses renderSSplot(80).R + kano(63).R when present)
+  # ============================================================
+  # FINAL REAL PLOT OVERRIDE: use renderSSplot.R and kano.R when available
+  # ------------------------------------------------------------
+  # Purpose:
+  # - Do NOT force fake/base SSplot when render_panel() exists.
+  # - Do NOT force fake/base Kano when kano.R functions exist.
+  # - Keep slopegraph safe so HTML/text objects do not trigger is.character(txt).
+  # ============================================================
+
+  .real_source_real_modules <- function() {
+    for (.f in c("renderSSplot(80).R", "renderSSplot(79).R", "renderSSplot.R", "renderSSplot(78).R")) {
+      if (file.exists(.f)) {
+        try(source(.f, local = FALSE, encoding = "UTF-8"), silent = TRUE)
+        break
+      }
+    }
+    for (.f in c("kano(63).R", "kano.R", "kano(62).R")) {
+      if (file.exists(.f)) {
+        try(source(.f, local = FALSE, encoding = "UTF-8"), silent = TRUE)
+        break
+      }
+    }
+    invisible(TRUE)
+  }
+  .real_source_real_modules()
+
+  .real_chr <- function(x) {
+    x <- as.character(x)
+    x[is.na(x)] <- ""
+    x
+  }
+
+  .real_num <- function(x, default = 0) {
+    z <- suppressWarnings(as.numeric(x))
+    z[!is.finite(z) | is.na(z)] <- default
+    z
+  }
+
+  .real_get_domain <- function(dom) {
+    dom <- .real_chr(dom)[1]
+    if (!nzchar(dom)) dom <- "Author"
+    out <- tryCatch(.get_domain(dom), error = function(e) NULL)
+    if (is.null(out)) out <- list(nodes = data.frame(), edges = data.frame())
+    out
+  }
+
+  .real_top20_nodes <- function(nd, n = 20) {
+    if (is.null(nd) || !is.data.frame(nd) || !nrow(nd)) return(data.frame())
+    nd <- as.data.frame(nd, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!"name" %in% names(nd)) nd$name <- if ("id" %in% names(nd)) .real_chr(nd$id) else .real_chr(nd[[1]])
+    nd$name <- trimws(.real_chr(nd$name))
+    nd <- nd[nzchar(nd$name), , drop = FALSE]
+    nd <- nd[!duplicated(nd$name), , drop = FALSE]
+    if (!"value" %in% names(nd)) nd$value <- 1
+    if (!"value2" %in% names(nd)) nd$value2 <- nd$value
+    if (!"carac" %in% names(nd)) nd$carac <- 1
+    if (!"ssi" %in% names(nd)) {
+      if ("SSi" %in% names(nd)) nd$ssi <- nd$SSi else if ("sil_width" %in% names(nd)) nd$ssi <- nd$sil_width else nd$ssi <- 0
+    }
+    if (!"sil_width" %in% names(nd)) nd$sil_width <- nd$ssi
+    if (!"a_star1" %in% names(nd)) {
+      if ("a_star" %in% names(nd)) nd$a_star1 <- nd$a_star else if ("a_i" %in% names(nd)) nd$a_star1 <- 1/(1 + .real_num(nd$a_i, 0)) else nd$a_star1 <- 0
+    }
+    nd$value <- .real_num(nd$value, 0)
+    nd$value2 <- .real_num(nd$value2, 0)
+    nd$ssi <- .real_num(nd$ssi, 0)
+    nd$sil_width <- .real_num(nd$sil_width, nd$ssi)
+    nd$a_star1 <- .real_num(nd$a_star1, 0)
+    nd$carac <- suppressWarnings(as.integer(gsub("[^0-9-]", "", .real_chr(nd$carac))))
+    nd$carac[!is.finite(nd$carac) | is.na(nd$carac)] <- 1L
+    if (!"rank" %in% names(nd)) nd$rank <- seq_len(nrow(nd))
+    rr <- suppressWarnings(as.numeric(nd$rank))
+    ord <- order(ifelse(is.finite(rr), rr, Inf), -nd$value, na.last = TRUE)
+    nd <- nd[ord, , drop = FALSE]
+    nd <- utils::head(nd, n)
+    nd$rank <- seq_len(nrow(nd))
+    nd
+  }
+
+  .real_edges_for_nodes <- function(ed, nd) {
+    if (is.null(ed) || !is.data.frame(ed) || !nrow(ed) || is.null(nd) || !nrow(nd)) {
+      return(data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors = FALSE))
+    }
+    ed <- as.data.frame(ed, stringsAsFactors = FALSE, check.names = FALSE)
+    if (all(c("from","to") %in% names(ed)) && !all(c("Leader","Follower") %in% names(ed))) {
+      names(ed)[match(c("from","to"), names(ed))] <- c("Leader","Follower")
+    }
+    if ("follower" %in% names(ed) && !"Follower" %in% names(ed)) names(ed)[names(ed)=="follower"] <- "Follower"
+    if (!"WCD" %in% names(ed)) {
+      if ("weight" %in% names(ed)) ed$WCD <- ed$weight else if ("value" %in% names(ed)) ed$WCD <- ed$value else ed$WCD <- 1
+    }
+    if (!all(c("Leader","Follower","WCD") %in% names(ed))) {
+      return(data.frame(Leader=character(), Follower=character(), WCD=numeric(), stringsAsFactors = FALSE))
+    }
+    ed <- ed[, c("Leader","Follower","WCD"), drop = FALSE]
+    ed$Leader <- trimws(.real_chr(ed$Leader)); ed$Follower <- trimws(.real_chr(ed$Follower)); ed$WCD <- .real_num(ed$WCD, 1)
+    keep <- nd$name
+    ed <- ed[nzchar(ed$Leader) & nzchar(ed$Follower) & ed$Leader %in% keep & ed$Follower %in% keep & ed$WCD > 0, , drop = FALSE]
+    ed
+  }
+
+  .real_modularity_results <- function(nd, ed) {
+    nd <- .real_top20_nodes(nd, 20)
+    ed <- .real_edges_for_nodes(ed, nd)
+    clv <- sort(unique(stats::na.omit(nd$carac)))
+    if (!length(clv)) clv <- 1L
+    out <- do.call(rbind, lapply(clv, function(cc) {
+      sub <- nd[nd$carac == cc, , drop = FALSE]
+      data.frame(Cluster = paste0("C", cc),
+                 SS = mean(sub$sil_width, na.rm = TRUE),
+                 Qw = 0, Qu = 0,
+                 D_GiniSimpson = NA_real_, Q_over_D = NA_real_,
+                 OneMinus_1_over_k = NA_real_, Q_over_Dmax_eff = NA_real_,
+                 n = nrow(sub), stringsAsFactors = FALSE)
+    }))
+    if (!nrow(ed) || nrow(nd) < 2) {
+      overall <- data.frame(Cluster="OVERALL", SS=mean(nd$sil_width, na.rm=TRUE), Qw=0, Qu=0,
+                            D_GiniSimpson=NA_real_, Q_over_D=NA_real_, OneMinus_1_over_k=NA_real_, Q_over_Dmax_eff=NA_real_,
+                            n=nrow(nd), stringsAsFactors=FALSE)
+      return(rbind(overall, out))
+    }
+    calcQ <- function(weighted = TRUE) {
+      W <- matrix(0, nrow(nd), nrow(nd), dimnames = list(nd$name, nd$name))
+      for (i in seq_len(nrow(ed))) {
+        a <- ed$Leader[i]; b <- ed$Follower[i]; w <- if (weighted) ed$WCD[i] else 1
+        if (a %in% nd$name && b %in% nd$name && a != b) { W[a,b] <- W[a,b] + w; W[b,a] <- W[b,a] + w }
+      }
+      m2 <- sum(W)
+      if (!is.finite(m2) || m2 <= 0) return(list(Q=0, by=setNames(rep(0,length(clv)), paste0("C",clv))))
+      k <- rowSums(W)
+      cl <- setNames(nd$carac, nd$name)
+      q_by <- setNames(numeric(length(clv)), paste0("C", clv))
+      for (cc in clv) {
+        ids <- names(cl)[cl == cc]
+        if (length(ids)) q_by[paste0("C",cc)] <- sum(W[ids, ids, drop=FALSE] - outer(k[ids], k[ids]) / m2) / m2
+      }
+      list(Q=sum(q_by), by=q_by)
+    }
+    qw <- calcQ(TRUE); qu <- calcQ(FALSE)
+    out$Qw <- as.numeric(qw$by[out$Cluster]); out$Qu <- as.numeric(qu$by[out$Cluster])
+    out$Qw[!is.finite(out$Qw)] <- 0; out$Qu[!is.finite(out$Qu)] <- 0
+    cc_all <- nd$carac; pk <- as.numeric(table(cc_all)) / length(cc_all); D <- 1 - sum(pk^2); Dmax <- 1 - 1 / max(1, length(unique(cc_all)))
+    overall <- data.frame(Cluster="OVERALL", SS=mean(nd$sil_width, na.rm=TRUE), Qw=qw$Q, Qu=qu$Q,
+                          D_GiniSimpson=D, Q_over_D=ifelse(is.finite(D) && D>0, qu$Q/D, NA_real_),
+                          OneMinus_1_over_k=Dmax, Q_over_Dmax_eff=ifelse(is.finite(Dmax) && Dmax>0, qu$Q/Dmax, NA_real_),
+                          n=nrow(nd), stringsAsFactors=FALSE)
+    rbind(overall, out)
+  }
+
+  .real_print_plot_object <- function(obj) {
+    if (is.null(obj)) return(invisible(TRUE))
+    if (inherits(obj, "recordedplot")) { replayPlot(obj); return(invisible(TRUE)) }
+    if (inherits(obj, "ggplot")) { print(obj); return(invisible(TRUE)) }
+    if (inherits(obj, "grob") || inherits(obj, "gTree") || inherits(obj, "gtable")) {
+      if (requireNamespace("grid", quietly = TRUE)) grid::grid.draw(obj)
+      return(invisible(TRUE))
+    }
+    if (is.function(obj)) { obj(); return(invisible(TRUE)) }
+    invisible(TRUE)
+  }
+
+  .real_draw_kano_value_value2 <- function(nd, ed, title_txt = "Kano: value vs value2") {
+    .real_source_real_modules()
+    nd <- .real_top20_nodes(nd, 20); ed <- .real_edges_for_nodes(ed, nd)
+    if (!nrow(nd)) { plot.new(); text(0.5,0.5,"No Top20 nodes available"); return(invisible()) }
+    # Real Kano from kano.R: two blue wings plus hub/outer circles.
+    if (exists("plot_kano_real", mode = "function")) {
+      obj <- plot_kano_real(nodes = nd, edges = ed, title_txt = title_txt, visual_ratio = 1/1.5, label_size = 4)
+      .real_print_plot_object(obj); return(invisible(TRUE))
+    }
+    if (exists("kano_plot", mode = "function")) {
+      obj <- kano_plot(nd, ed, title_txt = title_txt, xlab = "value2", ylab = "value", visual_ratio = 1/1.5)
+      .real_print_plot_object(obj); return(invisible(TRUE))
+    }
+    plot.new(); text(0.5, 0.5, "kano.R not found: place kano.R/kano(63).R in the app folder to draw the real two-wing Kano plot.", cex = 1.15, font = 2, col = "red")
+  }
+
+  .real_draw_kano_ss_astar <- function(nd, ed, title_txt = "Kano: SS vs a*") {
+    .real_source_real_modules()
+    nd <- .real_top20_nodes(nd, 20); ed <- .real_edges_for_nodes(ed, nd)
+    if (!nrow(nd)) { plot.new(); text(0.5,0.5,"No Top20 nodes available"); return(invisible()) }
+    nd$ss <- if ("sil_width" %in% names(nd)) nd$sil_width else nd$ssi
+    nd$ss <- .real_num(nd$ss, 0)
+    nd$a_star <- if ("a_star1" %in% names(nd)) nd$a_star1 else if ("a_star" %in% names(nd)) nd$a_star else 0
+    nd$a_star <- .real_num(nd$a_star, 0)
+    # Real SS-Kano from kano.R: map x=SS, y=a* into plot_kano_real() so the two wings/circles remain.
+    if (exists("kano_plot_ss_astar", mode = "function")) {
+      obj <- kano_plot_ss_astar(nd, ed, xlab = "SS", ylab = "a*", title_txt = title_txt, visual_ratio = 1/1.5)
+      .real_print_plot_object(obj); return(invisible(TRUE))
+    }
+    if (exists("plot_kano_ss_astar", mode = "function")) {
+      obj <- plot_kano_ss_astar(nd, title_txt = title_txt)
+      .real_print_plot_object(obj); return(invisible(TRUE))
+    }
+    if (exists("plot_kano_real", mode = "function")) {
+      nd2 <- nd
+      nd2$value <- nd$a_star
+      nd2$value2 <- nd$ss
+      obj <- plot_kano_real(nodes = nd2, edges = ed, title_txt = title_txt, visual_ratio = 1/1.5, label_size = 4)
+      .real_print_plot_object(obj); return(invisible(TRUE))
+    }
+    plot.new(); text(0.5, 0.5, "kano.R not found: place kano.R/kano(63).R in the app folder to draw the real SS-Kano plot.", cex = 1.15, font = 2, col = "red")
+  }
+
+  .real_draw_ssplot <- function(nd, ed, title_txt = "SSplot") {
+    nd20 <- .real_top20_nodes(nd, 20)
+    ed20 <- .real_edges_for_nodes(ed, nd20)
+    if (!nrow(nd20)) { plot.new(); text(0.5, 0.5, "No Top20 nodes for SSplot"); return(invisible()) }
+    nd20$sil_width <- nd20$ssi
+    if (!"wsel" %in% names(nd20)) nd20$wsel <- NA_real_
+    if (!"role" %in% names(nd20)) nd20$role <- NA_character_
+    if (!"neighbor_name" %in% names(nd20)) nd20$neighbor_name <- nd20$name
+    if (!"neighborC" %in% names(nd20)) nd20$neighborC <- nd20$carac
+    if (nrow(ed20)) {
+      for (i in seq_len(nrow(ed20))) {
+        j <- match(ed20$Follower[i], nd20$name)
+        if (!is.na(j)) {
+          nd20$wsel[j] <- ed20$WCD[i]
+          nd20$role[j] <- "follower"
+          nd20$neighbor_name[j] <- ed20$Leader[i]
+          nd20$neighborC[j] <- nd20$carac[match(ed20$Leader[i], nd20$name)]
+        }
+      }
+    }
+    leader_idx <- tapply(seq_len(nrow(nd20)), nd20$carac, function(ii) ii[order(-nd20$value2[ii], -nd20$value[ii], nd20$rank[ii])][1])
+    nd20$role[as.integer(leader_idx)] <- "leader"
+    res <- .real_modularity_results(nd20, ed20)
+    if (!exists("render_panel", mode = "function")) stop("render_panel() not found. Put renderSSplot.R/renderSSplot(79).R in the app folder.")
+    render_panel(sil_df = nd20, nodes0 = nd20, results = res, nodes = nd20,
+                 top_n = nrow(nd20), font_scale = input$ss_font_scale %||% 1.3,
+                 aac_side = "left", neighbor_side = "right", neighbor_on_bar = TRUE,
+                 footer_label = title_txt)
+  }
+
+  .real_base_slope <- function(yc, title = "Slopegraph") {
+    if (is.null(yc) || !is.data.frame(yc) || !nrow(yc)) { plot.new(); text(0.5, 0.5, "No slopegraph data", cex = 1.4, font = 2); return(invisible(NULL)) }
+    yc <- as.data.frame(yc, stringsAsFactors = FALSE)
+    if (!all(c("Year", "Count", "item") %in% names(yc))) { plot.new(); text(0.5, 0.5, "Slopegraph needs Year, item, Count", cex = 1.2, font = 2); return(invisible(NULL)) }
+    yc$Year <- suppressWarnings(as.integer(as.character(yc$Year)))
+    yc$Count <- .real_num(yc$Count, 0)
+    yc$item <- .real_chr(yc$item)
+    yc <- yc[is.finite(yc$Year) & nzchar(yc$item), , drop = FALSE]
+    if (!nrow(yc)) { plot.new(); text(0.5, 0.5, "No finite slopegraph data", cex = 1.4, font = 2); return(invisible(NULL)) }
+    tot <- aggregate(Count ~ item, data = yc, sum, na.rm = TRUE)
+    keep <- head(tot$item[order(-tot$Count)], 10)
+    yc <- yc[yc$item %in% keep, , drop = FALSE]
+    yrs <- sort(unique(yc$Year))
+    old <- par(no.readonly = TRUE); on.exit(par(old), add = TRUE)
+    par(mar = c(5.5, 9.0, 4.5, 9.0), family = "sans", xpd = NA)
+    ylim <- range(yc$Count, finite = TRUE); if (diff(ylim) == 0) ylim <- ylim + c(-1,1)
+    plot(range(yrs), ylim, type = "n", xlab = "Year", ylab = "Count", main = title, cex.main = 1.45, font.main = 2, cex.lab = 1.25, font.lab = 2)
+    grid(col = "grey88")
+    pal <- grDevices::hcl.colors(max(3, length(keep)), "Dark 3")
+    for (i in seq_along(keep)) {
+      d <- yc[yc$item == keep[i], , drop = FALSE]
+      d <- d[order(d$Year), , drop = FALSE]
+      lines(d$Year, d$Count, type = "b", lwd = 2.2, pch = 19, col = pal[i])
+      if (nrow(d)) {
+        text(d$Year[1], d$Count[1], labels = keep[i], pos = 2, cex = 0.85, font = 2, col = pal[i])
+        text(d$Year[nrow(d)], d$Count[nrow(d)], labels = keep[i], pos = 4, cex = 0.85, font = 2, col = pal[i])
+      }
+    }
+    invisible(NULL)
+  }
+
+  output$ssplot_panel <- renderPlot({
+    tryCatch({
+      dom <- .real_chr(input$ss_domain)[1]; if (!nzchar(dom)) dom <- "Author"
+      d <- .real_get_domain(dom)
+      .real_draw_ssplot(d$nodes, d$edges, title_txt = paste0("SSplot: FLCA-MA-SIL Top20 - ", dom))
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("SSplot error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 950)
+
+  output$kano_vv2_plot <- renderPlot({
+    tryCatch({
+      dom <- .real_chr(input$kano_domain)[1]; if (!nzchar(dom)) dom <- "Author"
+      d <- .real_get_domain(dom)
+      .real_draw_kano_value_value2(d$nodes, d$edges, title_txt = paste0("Kano: value vs value2 - ", dom))
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Kano error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 1250)
+
+  output$kano_ss_astar_plot <- renderPlot({
+    tryCatch({
+      dom <- .real_chr(input$kano_domain)[1]; if (!nzchar(dom)) dom <- "Author"
+      d <- .real_get_domain(dom)
+      .real_draw_kano_ss_astar(d$nodes, d$edges, title_txt = paste0("Kano: SS vs a* - ", dom))
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Kano SS/a* error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 1250)
+
+  output$ss_kano_plot <- renderPlot({
+    tryCatch({
+      dom <- .real_chr(input$ss_kano_domain)[1]; if (!nzchar(dom)) dom <- "Author"
+      d <- .real_get_domain(dom)
+      .real_draw_kano_ss_astar(d$nodes, d$edges, title_txt = paste0("SS Kano: SS vs a* - ", dom))
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("SSKano error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 1250)
+
+  output$plt_slope_top2_country <- renderPlot({
+    tryCatch({
+      req(rv$pubmeta)
+      doms <- input$yc_domains; if (is.null(doms) || !length(doms)) doms <- c("Author", "Country")
+      yc <- compute_combo_year_counts(rv, domains = doms, recent_n_years = if (is.null(input$yc_recent_years)) 10 else input$yc_recent_years)
+      .real_base_slope(yc, title = "Top10 combo slopegraph")
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Slopegraph error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 620)
+
+  output$plt_slope_top2_author <- renderPlot({
+    tryCatch({
+      req(rv$pubmeta)
+      yc <- compute_combo_year_counts(rv, domains = c("Author"), recent_n_years = if (is.null(input$yc_recent_years)) 10 else input$yc_recent_years)
+      .real_base_slope(yc, title = "Author metadata slopegraph")
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Author slopegraph error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 620)
+
+  output$plt_slope_top2_mesh <- renderPlot({
+    tryCatch({
+      req(rv$pubmeta)
+      yc <- compute_combo_year_counts(rv, domains = c("MeSH"), recent_n_years = if (is.null(input$yc_recent_years)) 10 else input$yc_recent_years)
+      .real_base_slope(yc, title = "MeSH metadata slopegraph")
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("MeSH slopegraph error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 620)
+
+  output$plt_slope_top2_author_fl <- renderPlot({
+    tryCatch({
+      req(rv$pubmeta)
+      doms <- input$yc_domains_fl; if (is.null(doms) || !length(doms)) doms <- c("Author (1st+Last)", "Country")
+      yc <- compute_combo_year_counts(rv, domains = doms, recent_n_years = if (is.null(input$yc_recent_years_fl)) 10 else input$yc_recent_years_fl)
+      .real_base_slope(yc, title = "Term/Year slopegraph")
+    }, error = function(e) { plot.new(); text(0.5, 0.5, paste("Term/Year slopegraph error:", conditionMessage(e)), col = "red", cex = 1.1, font = 2) })
+  }, height = 620)
+
+
+
+  # ============================================================
+  # FINAL FIX: real Tufte-form slopegraph, Top10 for each selected entity/domain
+  # - Top10 is recalculated within the selected entity/domain (Author, Country, etc.).
+  # - Data path follows the requested form: wide data -> long data -> tufte_sort -> slope plot.
+  # - Uses base plotting for the final rendering to avoid htmltools/grid errors such as:
+  #   "不是所有的 is.character(txt) 都是 TRUE".
+  # ============================================================
+  .sg_final_chr <- function(x) {
+    x <- as.character(x)
+    x[is.na(x)] <- ""
+    x <- iconv(x, from = "", to = "UTF-8", sub = "")
+    x[is.na(x)] <- ""
+    trimws(x)
+  }
+
+  .sg_final_num <- function(x, default = 0) {
+    x <- suppressWarnings(as.numeric(as.character(x)))
+    x[!is.finite(x) | is.na(x)] <- default
+    x
+  }
+
+  .sg_final_one <- function(x, default = NULL) {
+    if (is.null(x) || length(x) == 0 || all(is.na(x))) return(default)
+    x[[1]]
+  }
+
+  .sg_final_domain <- function(x) {
+    z <- .sg_final_chr(.sg_final_one(x, "Author"))[1]
+    allowed <- c("Author", "Journal", "Country", "State/Province", "Institute", "Department", "MeSH")
+    if (!nzchar(z) || !z %in% allowed) z <- "Author"
+    z
+  }
+
+  .sg_final_recent <- function(x) {
+    z <- suppressWarnings(as.integer(.sg_final_one(x, 10)))
+    if (!is.finite(z) || is.na(z) || z < 2) z <- 10L
+    z
+  }
+
+  .sg_final_blank_plot <- function(msg = "No slopegraph data available.") {
+    graphics::plot.new()
+    graphics::text(0.5, 0.5, .sg_final_chr(msg)[1], col = "red", cex = 1.15, font = 2)
+    invisible(NULL)
+  }
+
+  .sg_final_build_wide <- function(domain = "Author", recent_n_years = 10, top_n = 10) {
+    domain <- .sg_final_domain(domain)
+    recent_n_years <- .sg_final_recent(recent_n_years)
+
+    # Build Top10 directly from article-level metadata lists.
+    # This avoids compute_combo_year_counts(), which can inherit node order or
+    # FLCA/network filtering and make Author look alphabetically sorted.
+    yrs <- rv$article_years
+    if (is.null(yrs) && is.data.frame(rv$pubmeta) && "Year" %in% names(rv$pubmeta)) yrs <- rv$pubmeta$Year
+    yrs <- suppressWarnings(as.integer(as.character(yrs)))
+    if (!any(is.finite(yrs))) return(data.frame())
+
+    years_all <- sort(unique(yrs[is.finite(yrs)]))
+    years_keep <- utils::tail(years_all, min(recent_n_years, length(years_all)))
+    if (length(years_keep) < 2) return(data.frame())
+
+    tl <- tryCatch(.get_domain_term_list(rv, domain), error = function(e) NULL)
+
+    # MeSH can be stored in pubmeta and should remain article-year aligned.
+    if (tolower(domain) %in% c("mesh", "mesh term", "meshterm") && is.data.frame(rv$pubmeta)) {
+      cn_mesh <- intersect(c("MeSH", "Mesh", "MESH", "mesh"), names(rv$pubmeta))
+      if (length(cn_mesh)) tl <- as.list(as.character(rv$pubmeta[[cn_mesh[1]]]))
+    }
+
+    # Fallback to pubmeta columns only if the article-level list does not exist.
+    if (is.null(tl) && is.data.frame(rv$pubmeta)) {
+      d <- tolower(domain)
+      cand <- switch(
+        d,
+        "author" = c("Author", "Authors", "AU", "author", "authors"),
+        "journal" = c("Journal", "Source", "Source Title", "journal"),
+        "country" = c("Country", "Countries", "country"),
+        "state/province" = c("State/Province", "State", "Province", "state", "province", "state_province", "stateprov"),
+        "institute" = c("Institute", "Inst", "Affiliation", "institute", "inst"),
+        "department" = c("Department", "Dept", "department", "dept"),
+        "mesh" = c("MeSH", "Mesh", "MESH", "mesh"),
+        c()
+      )
+      cn <- intersect(cand, names(rv$pubmeta))
+      if (length(cn)) tl <- as.list(as.character(rv$pubmeta[[cn[1]]]))
+    }
+    if (is.null(tl) || !length(tl)) return(data.frame())
+
+    n <- min(length(tl), length(yrs))
+    tl <- tl[seq_len(n)]
+    yv <- yrs[seq_len(n)]
+    keep_i <- which(is.finite(yv) & yv %in% years_keep)
+    if (!length(keep_i)) return(data.frame())
+
+    splitter <- if (tolower(domain) %in% c("mesh", "mesh term", "meshterm")) .split_mesh_terms_safe else .split_terms2
+
+    rec <- vector("list", length(keep_i))
+    jj <- 0L
+    for (i in keep_i) {
+      terms <- tryCatch(splitter(tl[[i]]), error = function(e) character(0))
+      terms <- .sg_final_chr(terms)
+      terms <- terms[nzchar(terms)]
+      terms <- terms[.is_single_metadata_item(terms)]
+      terms <- unique(terms)  # one publication contributes once per entity per year
+      if (!length(terms)) next
+
+      jj <- jj + 1L
+      rec[[jj]] <- data.frame(
+        item = terms,
+        Year = rep(as.integer(yv[i]), length(terms)),
+        Count = rep(1, length(terms)),
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      )
+    }
+    if (jj == 0L) return(data.frame())
+    rec <- rec[seq_len(jj)]
+
+    yc_raw <- do.call(rbind, rec)
+    yc_raw$item <- .sg_final_chr(yc_raw$item)
+    yc_raw$Year <- suppressWarnings(as.integer(as.character(yc_raw$Year)))
+    yc_raw$Count <- .sg_final_num(yc_raw$Count, 0)
+    yc_raw <- yc_raw[nzchar(yc_raw$item) & is.finite(yc_raw$Year) & yc_raw$Year %in% years_keep, , drop = FALSE]
+    if (!nrow(yc_raw)) return(data.frame())
+
+    # Select Top10 within the selected domain by TOTAL count in the chosen year window.
+    totals <- stats::aggregate(Count ~ item, data = yc_raw, FUN = sum, na.rm = TRUE)
+    names(totals)[names(totals) == "Count"] <- "Total"
+    totals$item <- .sg_final_chr(totals$item)
+    totals$Total <- .sg_final_num(totals$Total, 0)
+    totals <- totals[totals$Total > 0 & nzchar(totals$item), , drop = FALSE]
+    totals <- totals[order(-totals$Total, totals$item), , drop = FALSE]
+    totals <- utils::head(totals, min(top_n, nrow(totals)))
+    if (!nrow(totals)) return(data.frame())
+    totals$OverallRank <- seq_len(nrow(totals))
+
+    # Now compute yearly counts only for those Top10 items.
+    yc <- yc_raw[yc_raw$item %in% totals$item, , drop = FALSE]
+    yc <- stats::aggregate(Count ~ item + Year, data = yc, FUN = sum, na.rm = TRUE)
+
+    full <- expand.grid(item = totals$item, Year = years_keep, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    full <- merge(full, yc, by = c("item", "Year"), all.x = TRUE, sort = FALSE)
+    full$Count <- .sg_final_num(full$Count, 0)
+    full <- merge(full, totals[, c("item", "OverallRank", "Total"), drop = FALSE], by = "item", all.x = TRUE, sort = FALSE)
+    full <- full[order(full$OverallRank, full$Year), , drop = FALSE]
+
+    mat <- xtabs(Count ~ item + Year, data = full)
+    mat <- mat[as.character(totals$item), as.character(years_keep), drop = FALSE]
+    wide <- data.frame(group = rownames(mat), as.data.frame.matrix(mat),
+                       stringsAsFactors = FALSE, check.names = FALSE)
+    names(wide)[seq_along(years_keep) + 1L] <- as.character(years_keep)
+    wide <- merge(wide, totals[, c("item", "OverallRank", "Total"), drop = FALSE],
+                  by.x = "group", by.y = "item", all.x = TRUE, sort = FALSE)
+    wide <- wide[order(wide$OverallRank), , drop = FALSE]
+    rownames(wide) <- NULL
+    wide
+  }
+
+
+  .sg_final_long_from_wide <- function(data_wide) {
+    if (is.null(data_wide) || !is.data.frame(data_wide) || !nrow(data_wide)) return(data.frame())
+    data_wide <- as.data.frame(data_wide, stringsAsFactors = FALSE, check.names = FALSE)
+    if (!"group" %in% names(data_wide)) names(data_wide)[1] <- "group"
+    year_cols <- setdiff(names(data_wide), c("group", "OverallRank", "Total"))
+    year_cols <- year_cols[grepl("^[0-9]{4}$", year_cols)]
+    if (!length(year_cols)) return(data.frame())
+
+    out <- do.call(rbind, lapply(year_cols, function(cc) {
+      data.frame(group = .sg_final_chr(data_wide$group),
+                 year  = .sg_final_chr(cc),
+                 value = .sg_final_num(data_wide[[cc]], 0),
+                 stringsAsFactors = FALSE, check.names = FALSE)
+    }))
+    out$group <- .sg_final_chr(out$group)
+    out$year <- .sg_final_chr(out$year)
+    out$value <- .sg_final_num(out$value, 0)
+    attr(out, "year_cols") <- year_cols
+    out
+  }
+
+  .sg_final_tufte_sort <- function(df, x = "year", y = "value", group = "group", method = "tufte", min.space = 0.05) {
+    ids <- match(c(x, y, group), names(df))
+    if (any(is.na(ids))) return(data.frame())
+    df <- df[, ids, drop = FALSE]
+    names(df) <- c("x", "y", "group")
+    df$x <- .sg_final_chr(df$x)
+    df$group <- .sg_final_chr(df$group)
+    df$y <- .sg_final_num(df$y, 0)
+
+    x_levels <- unique(df$x)
+    if (all(grepl("^[0-9]{4}$", x_levels))) x_levels <- as.character(sort(as.integer(x_levels)))
+
+    # group order arrives from .sg_final_build_wide(): Total Count descending.
+    # To display the highest-count Top10 item at the top in a base plot,
+    # the internal Tufte stacking starts from the lowest-count item.
+    group_levels_desc <- unique(df$group)
+    group_levels_bottom_to_top <- rev(group_levels_desc)
+
+    tmp_grid <- expand.grid(x = x_levels, group = group_levels_bottom_to_top, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    tmp <- merge(df, tmp_grid, by = c("x", "group"), all.y = TRUE, sort = FALSE)
+    tmp$y <- .sg_final_num(tmp$y, 0)
+
+    mat <- xtabs(y ~ group + x, data = tmp)
+    mat <- mat[group_levels_bottom_to_top, x_levels, drop = FALSE]
+    tmp_wide <- data.frame(group = rownames(mat), as.data.frame.matrix(mat),
+                           stringsAsFactors = FALSE, check.names = FALSE)
+    names(tmp_wide)[seq_along(x_levels) + 1L] <- x_levels
+
+    value_mat <- as.matrix(tmp_wide[, x_levels, drop = FALSE])
+    storage.mode(value_mat) <- "numeric"
+    rng <- range(value_mat, na.rm = TRUE, finite = TRUE)
+    span <- diff(rng)
+    if (!is.finite(span) || span <= 0) span <- 1
+    gap <- max(min.space * span, 0.85)
+
+    yshift <- numeric(nrow(tmp_wide))
+    if (nrow(tmp_wide) >= 2) {
+      for (i in 2:nrow(tmp_wide)) {
+        m2 <- as.matrix(tmp_wide[(i - 1):i, x_levels, drop = FALSE])
+        storage.mode(m2) <- "numeric"
+        d_min <- suppressWarnings(min(diff(m2), na.rm = TRUE))
+        if (!is.finite(d_min)) d_min <- 0
+        yshift[i] <- ifelse(d_min < gap, gap - d_min, 0)
+      }
+    }
+    tmp_wide$yshift <- cumsum(yshift)
+
+    out <- do.call(rbind, lapply(x_levels, function(xx) {
+      data.frame(group = .sg_final_chr(tmp_wide$group),
+                 yshift = .sg_final_num(tmp_wide$yshift, 0),
+                 x = .sg_final_chr(xx),
+                 y = .sg_final_num(tmp_wide[[xx]], 0),
+                 stringsAsFactors = FALSE, check.names = FALSE)
+    }))
+    out$ypos <- out$y + out$yshift
+    out$x <- factor(out$x, levels = x_levels, labels = x_levels)
+    out
+  }
+
+
+  .sg_final_base_tufte_plot <- function(df, title = "Estimates of Values over Years", label_digits = 0) {
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(.sg_final_blank_plot())
+    df <- as.data.frame(df, stringsAsFactors = FALSE, check.names = FALSE)
+    df$group <- .sg_final_chr(df$group)
+    df$x_chr <- .sg_final_chr(as.character(df$x))
+    df$y <- .sg_final_num(df$y, 0)
+    df$ypos <- .sg_final_num(df$ypos, 0)
+
+    x_levels <- unique(df$x_chr)
+    x_pos <- seq_along(x_levels)
+    names(x_pos) <- x_levels
+
+    first_x <- x_levels[1]
+    left <- df[df$x_chr == first_x & is.finite(df$ypos), c("group", "ypos"), drop = FALSE]
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(oldpar), add = TRUE)
+    graphics::par(mar = c(4.5, 20, 4.5, 2.5), xpd = NA)
+
+    y_range <- range(df$ypos, na.rm = TRUE, finite = TRUE)
+    if (!all(is.finite(y_range)) || diff(y_range) <= 0) y_range <- y_range + c(-1, 1)
+
+    graphics::plot(x_pos[df$x_chr], df$ypos, type = "n", axes = FALSE,
+                   xlab = "", ylab = "", main = .sg_final_chr(title)[1],
+                   xlim = c(min(x_pos) - 0.15, max(x_pos) + 0.15),
+                   ylim = y_range)
+    graphics::axis(1, at = x_pos, labels = .sg_final_chr(x_levels), font = 2, cex.axis = 1.0)
+
+    # Larger bold entity labels on the left. Labels are not drawn through axis()
+    # because axis() can shrink them and makes long Author labels hard to read.
+    graphics::axis(2, at = left$ypos, labels = FALSE, las = 1, tick = FALSE)
+    graphics::text(rep(min(x_pos) - 0.10, nrow(left)), left$ypos,
+                   labels = .sg_final_chr(left$group),
+                   adj = 1, font = 2, cex = 1.08)
+
+    for (g in unique(df$group)) {
+      d <- df[df$group == g, , drop = FALSE]
+      d <- d[match(x_levels, d$x_chr), , drop = FALSE]
+      xp <- x_pos[d$x_chr]
+      graphics::lines(xp, d$ypos, col = "red", lwd = 2)
+      graphics::points(xp, d$ypos, pch = 21, bg = "white", col = "black", cex = 2.6, lwd = 1)
+
+      # Blank labels for zero counts: keep the white circle, remove the "0".
+      nz <- which(is.finite(d$y) & d$y != 0)
+      if (length(nz)) {
+        lab <- sprintf(paste0("%.", as.integer(label_digits), "f"), d$y[nz])
+        graphics::text(xp[nz], d$ypos[nz], labels = .sg_final_chr(lab), cex = 0.78)
+      }
+    }
+    graphics::box(bty = "l")
+    invisible(NULL)
+  }
+
+
+  .sg_final_draw_domain <- function(domain = "Author", recent_n_years = 10) {
+    domain <- .sg_final_domain(domain)
+    recent_n_years <- .sg_final_recent(recent_n_years)
+    wide <- .sg_final_build_wide(domain, recent_n_years, top_n = 10)
+    if (is.null(wide) || !is.data.frame(wide) || !nrow(wide)) {
+      return(.sg_final_blank_plot(paste0("No Top10 year-count data for ", domain, ". Run analysis first or choose another entity.")))
+    }
+    data_long <- .sg_final_long_from_wide(wide)
+    df <- .sg_final_tufte_sort(data_long, x = "year", y = "value", group = "group", method = "tufte", min.space = 0.05)
+    .sg_final_base_tufte_plot(df, title = paste0(domain, " Top10 real slopegraph over recent ", recent_n_years, " years"), label_digits = 0)
+  }
+
+  .sg_final_table <- function(domain = "Author", recent_n_years = 10) {
+    wide <- .sg_final_build_wide(domain, recent_n_years, top_n = 10)
+    if (is.null(wide) || !is.data.frame(wide) || !nrow(wide)) {
+      return(data.frame(Message = "No Top10 year-count data.", stringsAsFactors = FALSE))
+    }
+    wide
+  }
+
+  output$slope_combo_entity_note <- renderText({
+    "Real Tufte-style slopegraph: Top10 is recalculated within the selected entity/domain; y positions use yearly Count values plus Tufte spacing."
+  })
+
+  output$plot_slope_combo_entity_top10 <- renderPlot({
+    req(rv$pubmeta)
+    .sg_final_draw_domain(.sg_final_domain(input$slope_combo_entity_domain), .sg_final_recent(input$slope_combo_recent_years))
+  }, height = 760)
+
+  output$tbl_slope_combo_entity_top10 <- DT::renderDT({
+    req(rv$pubmeta)
+    DT::datatable(
+      .sg_final_table(.sg_final_domain(input$slope_combo_entity_domain), .sg_final_recent(input$slope_combo_recent_years)),
+      rownames = FALSE,
+      options = list(pageLength = 10, scrollX = TRUE)
+    )
+  })
+
+  output$slope_combo_entity_plot <- renderPlot({
+    req(rv$pubmeta)
+    .sg_final_draw_domain(.sg_final_domain(input$slope_simple_entity_domain), .sg_final_recent(input$slope_simple_recent_years))
+  }, height = 760)
+
+  output$slope_combo_entity_table <- DT::renderDT({
+    req(rv$pubmeta)
+    DT::datatable(
+      .sg_final_table(.sg_final_domain(input$slope_simple_entity_domain), .sg_final_recent(input$slope_simple_recent_years)),
+      rownames = FALSE,
+      options = list(pageLength = 10, scrollX = TRUE)
+    )
+  })
+
+
+
+  # The former standalone extra-analysis output block has been deleted.
+  # These graphics are now rendered only inside the Slope tab below.
+
+  # ============================================================
+  # Slope-tab integrated extra plots
+  # User request: draw these plots inside Slope only.
+  # All three plots use the stable Slope Top10 long table as the single source.
+  # ============================================================
+  .sg_slope_extra_domain <- function() {
+    z <- input$slope_combo_entity_domain
+    if (is.null(z) || length(z) == 0 || !nzchar(.sg_final_chr(z)[1])) z <- input$slope_simple_entity_domain
+    if (is.null(z) || length(z) == 0 || !nzchar(.sg_final_chr(z)[1])) z <- input$combo_domain
+    if (is.null(z) || length(z) == 0 || !nzchar(.sg_final_chr(z)[1])) z <- "Author"
+    z <- .sg_final_chr(z)[1]
+    if (identical(z, "Journal/Year")) z <- "Journal"
+    .sg_final_domain(z)
+  }
+
+  .sg_slope_extra_recent <- function() {
+    z <- input$slope_combo_recent_years
+    if (is.null(z) || length(z) == 0) z <- input$slope_simple_recent_years
+    if (is.null(z) || length(z) == 0) z <- 10
+    .sg_final_recent(z)
+  }
+
+  .sg_slope_extra_long <- function() {
+    dom <- .sg_slope_extra_domain()
+    wide <- .sg_final_build_wide(dom, .sg_slope_extra_recent(), top_n = 10)
+    if (is.null(wide) || !is.data.frame(wide) || !nrow(wide)) return(data.frame())
+    long <- .sg_final_long_from_wide(wide)
+    if (is.null(long) || !is.data.frame(long) || !nrow(long)) return(data.frame())
+
+    out <- data.frame(
+      Domain = rep(dom, nrow(long)),
+      term   = .sg_final_chr(long$group),
+      Year   = suppressWarnings(as.integer(.sg_final_chr(long$year))),
+      Count  = .sg_final_num(long$value, 0),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+    out <- out[nzchar(out$term) & is.finite(out$Year), , drop = FALSE]
+    if (!nrow(out)) return(data.frame())
+
+    term_order <- .sg_final_chr(wide$group)
+    term_order <- term_order[nzchar(term_order)]
+    out$term_order <- match(out$term, term_order)
+    out <- out[order(out$term_order, out$Year), , drop = FALSE]
+
+    mean_df <- stats::aggregate(Count ~ term, data = out, FUN = mean, na.rm = TRUE)
+    names(mean_df)[names(mean_df) == "Count"] <- "mean_count"
+    out <- merge(out, mean_df, by = "term", all.x = TRUE, sort = FALSE)
+    out$mean_count <- .sg_final_num(out$mean_count, 0)
+    out$is_burst <- out$Count > out$mean_count
+    out <- out[order(out$term_order, out$Year), c("Domain","term","Year","Count","mean_count","is_burst"), drop = FALSE]
+    rownames(out) <- NULL
+    out
+  }
+
+  .sg_slope_extra_blank <- function(msg) {
+    graphics::plot.new()
+    graphics::text(0.5, 0.5, .sg_final_chr(msg)[1], col = "red", cex = 1.15, font = 2)
+    invisible(NULL)
+  }
+
+  .sg_slope_extra_draw_heatmap <- function() {
+    df <- .sg_slope_extra_long()
+    dom <- .sg_slope_extra_domain()
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+      return(.sg_slope_extra_blank(paste0("No Top10 long table data for ", dom, ". Run analysis first or choose another Slope entity.")))
+    }
+    terms <- unique(.sg_final_chr(df$term))
+    yrs <- sort(unique(suppressWarnings(as.integer(df$Year))))
+    if (!length(terms) || !length(yrs)) return(.sg_slope_extra_blank("No finite heatmap data."))
+    df$term <- factor(.sg_final_chr(df$term), levels = terms)
+    df$Year <- factor(as.character(as.integer(df$Year)), levels = as.character(yrs))
+    mat <- stats::xtabs(Count ~ term + Year, data = df)
+    mat <- mat[terms, as.character(yrs), drop = FALSE]
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(oldpar), add = TRUE)
+    graphics::par(mar = c(5.2, 18, 4.2, 2), xpd = NA)
+    z <- t(as.matrix(mat)); storage.mode(z) <- "numeric"
+    graphics::image(seq_along(yrs), seq_along(terms), z, axes = FALSE,
+                    xlab = "Year", ylab = "",
+                    main = paste0(dom, " Top10 Heatmap"),
+                    col = grDevices::colorRampPalette(c("blue", "white", "red"))(64))
+    graphics::axis(1, at = seq_along(yrs), labels = .sg_final_chr(as.character(yrs)), las = 2, font = 2)
+    graphics::axis(2, at = seq_along(terms), labels = .sg_final_chr(terms), las = 1, font = 2, cex.axis = 0.85)
+    graphics::box()
+    burst <- df[df$is_burst %in% TRUE, , drop = FALSE]
+    if (nrow(burst)) {
+      bx <- match(.sg_final_chr(as.character(burst$Year)), .sg_final_chr(as.character(yrs)))
+      by <- match(.sg_final_chr(as.character(burst$term)), .sg_final_chr(terms))
+      ok <- is.finite(bx) & is.finite(by)
+      if (any(ok)) graphics::points(bx[ok], by[ok], pch = 21, bg = "red", col = "black", cex = 1.25, lwd = 0.8)
+    }
+    graphics::legend("topright", legend = "Count > term mean", pch = 21, pt.bg = "red", bty = "n", cex = 0.9)
+    invisible(NULL)
+  }
+
+  .sg_slope_extra_draw_timeline <- function() {
+    df <- .sg_slope_extra_long()
+    dom <- .sg_slope_extra_domain()
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+      return(.sg_slope_extra_blank(paste0("No Top10 timeline data for ", dom, ".")))
+    }
+    terms <- unique(.sg_final_chr(df$term))
+    yrs <- sort(unique(suppressWarnings(as.integer(df$Year))))
+    if (!length(terms) || !length(yrs)) return(.sg_slope_extra_blank("No finite timeline data."))
+    df$term <- .sg_final_chr(df$term)
+    df$Count <- .sg_final_num(df$Count, 0)
+    max_count <- max(df$Count, na.rm = TRUE); if (!is.finite(max_count) || max_count <= 0) max_count <- 1
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(oldpar), add = TRUE)
+    graphics::par(mar = c(5.2, 18, 4.5, 2), xpd = NA)
+    graphics::plot(range(yrs), c(1, length(terms)), type = "n", axes = FALSE,
+                   xlab = "Year", ylab = "",
+                   main = paste0(dom, " Top10 year-count spot plot"))
+    graphics::axis(1, at = yrs, labels = .sg_final_chr(as.character(yrs)), las = 2, font = 2)
+    graphics::axis(2, at = seq_along(terms), labels = .sg_final_chr(terms), las = 1, font = 2, cex.axis = 0.85)
+    graphics::grid(nx = NA, ny = NULL, col = "grey88")
+    for (i in seq_along(terms)) {
+      d <- df[df$term == terms[i], , drop = FALSE]
+      d <- d[order(d$Year), , drop = FALSE]
+      if (!nrow(d)) next
+      graphics::lines(d$Year, rep(i, nrow(d)), col = "grey70", lwd = 1)
+      cex <- 0.55 + 2.3 * sqrt(pmax(0, d$Count) / max_count)
+      bg <- ifelse(d$is_burst %in% TRUE, "red", "white")
+      graphics::points(d$Year, rep(i, nrow(d)), pch = 21, bg = bg, col = "black", cex = cex, lwd = 0.8)
+    }
+    graphics::legend("topright", legend = c("High", "Other"), pch = 21, pt.bg = c("red", "white"), bty = "n")
+    invisible(NULL)
+  }
+
+  .sg_slope_extra_draw_3d <- function() {
+    df <- .sg_slope_extra_long()
+    dom <- .sg_slope_extra_domain()
+    if (!requireNamespace("plotly", quietly = TRUE)) {
+      return(plotly::plot_ly() |> plotly::layout(
+        title = list(text = "Package plotly is required. Please run install.packages('plotly').")
+      ))
+    }
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+      return(plotly::plot_ly() |> plotly::layout(
+        title = list(text = paste0("No Top10 3D dashboard data for ", dom, ". Run analysis first or choose another Slope entity."))
+      ))
+    }
+
+    terms <- unique(.sg_final_chr(df$term))
+
+    # Use current domain FLCA nodes for maturity/influence when available.
+    nodes <- tryCatch(.real_get_domain(if (dom == "Journal") "Journal/Year" else dom)$nodes, error = function(e) NULL)
+    if (!is.null(nodes) && is.data.frame(nodes) && nrow(nodes) && "name" %in% names(nodes)) {
+      nodes$name <- .sg_final_chr(nodes$name)
+      node_df <- nodes[nodes$name %in% terms, , drop = FALSE]
+      if (!"value" %in% names(node_df)) node_df$value <- NA_real_
+      if (!"value2" %in% names(node_df)) node_df$value2 <- NA_real_
+      node_df <- node_df[, intersect(c("name", "value", "value2"), names(node_df)), drop = FALSE]
+      names(node_df)[names(node_df) == "name"] <- "term"
+    } else {
+      node_df <- data.frame(term = terms, value = NA_real_, value2 = NA_real_, stringsAsFactors = FALSE)
+    }
+
+    # Fallback maturity/influence from Top10 long table if FLCA node values are unavailable.
+    agg_total <- stats::aggregate(Count ~ term, data = df, FUN = sum, na.rm = TRUE)
+    agg_peak  <- stats::aggregate(Count ~ term, data = df, FUN = max, na.rm = TRUE)
+    names(agg_total)[2] <- "total_count"
+    names(agg_peak)[2]  <- "peak_count"
+
+    met <- merge(data.frame(term = terms, stringsAsFactors = FALSE), node_df, by = "term", all.x = TRUE, sort = FALSE)
+    met <- merge(met, agg_total, by = "term", all.x = TRUE, sort = FALSE)
+    met <- merge(met, agg_peak,  by = "term", all.x = TRUE, sort = FALSE)
+    met$value  <- .sg_final_num(met$value, NA_real_)
+    met$value2 <- .sg_final_num(met$value2, NA_real_)
+    met$maturity  <- ifelse(is.finite(met$value),  met$value,  .sg_final_num(met$total_count, 0))
+    met$influence <- ifelse(is.finite(met$value2), met$value2, .sg_final_num(met$peak_count, 0))
+
+    # Trend / recency = correlation coefficient between rank number 1:n and recent counts.
+    # Use up to the most recent 4 timepoints for each Top10 element.
+    met$trend <- vapply(met$term, function(tt) {
+      d <- df[df$term == tt, , drop = FALSE]
+      d <- d[order(d$Year), , drop = FALSE]
+      d <- utils::tail(d, min(4, nrow(d)))
+      y <- .sg_final_num(d$Count, 0)
+      if (length(y) < 2 || !is.finite(stats::sd(y)) || stats::sd(y) == 0) return(0)
+      r <- suppressWarnings(stats::cor(seq_along(y), y, use = "complete.obs"))
+      if (is.finite(r)) r else 0
+    }, numeric(1))
+
+    # Keep exact Top10 order from the slope/long-table source.
+    met$term <- .sg_final_chr(met$term)
+    met <- met[nzchar(met$term), , drop = FALSE]
+    if (!nrow(met)) {
+      return(plotly::plot_ly() |> plotly::layout(title = list(text = "No finite Top10 3D dashboard values.")))
+    }
+
+    x <- .sg_final_num(met$maturity, 0)
+    y <- .sg_final_num(met$influence, 0)
+    z <- .sg_final_num(met$trend, 0)
+
+    xmin <- min(x, na.rm = TRUE); xmax <- max(x, na.rm = TRUE)
+    ymin <- min(y, na.rm = TRUE); ymax <- max(y, na.rm = TRUE)
+    zmin <- min(-1, z, na.rm = TRUE); zmax <- max(1, z, na.rm = TRUE)
+    if (!is.finite(xmin) || !is.finite(xmax) || xmin == xmax) { xmin <- xmin - 1; xmax <- xmax + 1 }
+    if (!is.finite(ymin) || !is.finite(ymax) || ymin == ymax) { ymin <- ymin - 1; ymax <- ymax + 1 }
+    if (!is.finite(zmin) || !is.finite(zmax) || zmin == zmax) { zmin <- -1; zmax <- 1 }
+
+    # Put the vertical Trend/Z guide at the left-front corner of the maturity–influence plane.
+    x_axis <- xmin
+    y_axis <- ymin
+
+    size_val <- .sg_final_num(met$maturity, 0)
+    if (length(size_val) && max(size_val, na.rm = TRUE) > min(size_val, na.rm = TRUE)) {
+      marker_size <- 10 + 24 * (size_val - min(size_val, na.rm = TRUE)) / (max(size_val, na.rm = TRUE) - min(size_val, na.rm = TRUE) + 1e-9)
+    } else {
+      marker_size <- rep(16, nrow(met))
+    }
+
+    hover_txt <- paste0(
+      "<b>", htmltools::htmlEscape(met$term), "</b>",
+      "<br>Maturity(value): ", round(x, 3),
+      "<br>Influence(value2): ", round(y, 3),
+      "<br>Trend/recency r: ", round(z, 3)
+    )
+
+    p <- plotly::plot_ly()
+
+    # Blue maturity-influence plane at z=0.
+    p <- plotly::add_trace(
+      p,
+      x = c(xmin, xmax, xmax, xmin),
+      y = c(ymin, ymin, ymax, ymax),
+      z = c(0, 0, 0, 0),
+      type = "mesh3d",
+      i = c(0, 0), j = c(1, 2), k = c(2, 3),
+      opacity = 0.13,
+      color = "lightblue",
+      name = "Maturity–Influence plane",
+      hoverinfo = "skip",
+      showlegend = FALSE
+    )
+
+    # Red vertical Z/trend axis at left side.
+    p <- plotly::add_trace(
+      p,
+      x = c(x_axis, x_axis),
+      y = c(y_axis, y_axis),
+      z = c(zmin, zmax),
+      type = "scatter3d",
+      mode = "lines",
+      line = list(color = "red", width = 10),
+      name = "Trend / recency axis",
+      hoverinfo = "skip",
+      showlegend = TRUE
+    )
+
+    p <- plotly::add_trace(
+      p,
+      x = x,
+      y = y,
+      z = z,
+      type = "scatter3d",
+      mode = "markers+text",
+      text = as.character(seq_len(nrow(met))),
+      textposition = "top center",
+      hovertext = hover_txt,
+      hoverinfo = "text",
+      marker = list(
+        size = marker_size,
+        color = z,
+        colorscale = list(c(0, "blue"), c(0.5, "white"), c(1, "red")),
+        cmin = -1,
+        cmax = 1,
+        opacity = 0.88,
+        line = list(color = "black", width = 1)
+      ),
+      name = "Top10 elements",
+      showlegend = FALSE
+    )
+
+    # Add a compact numeric legend in the right margin.
+    legend_txt <- paste0(seq_len(nrow(met)), ". ", htmltools::htmlEscape(met$term), " (r=", sprintf("%.2f", z), ")", collapse = "<br>")
+
+    plotly::layout(
+      p,
+      title = list(text = paste0(dom, " Top10 interactive 3D dashboard")),
+      scene = list(
+        xaxis = list(title = "Maturity = value", range = c(xmin, xmax), backgroundcolor = "rgba(245,245,255,0.75)"),
+        yaxis = list(title = "Influence = value2", range = c(ymin, ymax), backgroundcolor = "rgba(245,255,245,0.75)"),
+        zaxis = list(
+          title = list(text = "Trend / recency = cor(1:n, recent counts)", font = list(color = "red")),
+          range = c(zmin, zmax),
+          tickfont = list(color = "red"),
+          gridcolor = "red",
+          zerolinecolor = "red",
+          backgroundcolor = "rgba(255,245,245,0.80)"
+        ),
+        aspectmode = "cube",
+        camera = list(eye = list(x = 1.85, y = -2.35, z = 1.25))
+      ),
+      annotations = list(list(
+        x = 1.02, y = 0.98, xref = "paper", yref = "paper",
+        text = legend_txt,
+        showarrow = FALSE,
+        align = "left",
+        xanchor = "left",
+        yanchor = "top",
+        font = list(size = 11)
+      )),
+      margin = list(l = 0, r = 260, b = 0, t = 55)
+    )
+  }
+
+  output$slope_burst_heatmap_plot <- renderPlot({
+    req(rv$pubmeta)
+    .sg_slope_extra_draw_heatmap()
+  }, height = 650)
+
+  output$slope_burst_timeline_plot <- renderPlot({
+    req(rv$pubmeta)
+    .sg_slope_extra_draw_timeline()
+  }, height = 650)
+
+  output$slope_mesh_3d_plot <- plotly::renderPlotly({
+    req(rv$pubmeta)
+    .sg_slope_extra_draw_3d()
+  })
+
+  output$slope_burst_long_table <- renderPrint({
+    req(rv$pubmeta)
+    df <- .sg_slope_extra_long()
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+      cat("No Top10 long table data. Run analysis first or choose another Slope entity.\n")
+    } else {
+      print(df, row.names = FALSE)
+    }
+  })
+
 }
 
-
-`%||%` <- function(a, b) if (is.null(a)) b else a
 
 shinyApp(ui = ui, server = server)
