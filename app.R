@@ -8676,22 +8676,90 @@ output$perf_download_png <- downloadHandler(
 
 
 
-# ---- ReadMe (concise) ----
-output$readme_html <- shiny::renderUI(shiny::HTML(paste0(
-  "<div style='line-height:1.55'>",
-  "<p><b>What this app does</b>: Fetch PubMed (by query) or parse an uploaded MEDLINE .txt, then build Top-20 networks (Author / Journal-Year / Country / Institute / Department / MeSH) and show plots (Sankey, Kano, SSplot) + export files.</p>",
-  "<ol>",
-  "<li><b>Choose data source</b>:<ul>",
-  "<li><b>PubMed query</b>: enter a term and click <b>Fetch PubMed</b>.</li>",
-  "<li><b>Uploaded MEDLINE</b>: upload .txt, keep <i>Use uploaded MEDLINE (ignore query)</i> checked, then click <b>Fetch PubMed</b>.</li>",
-  "<li>If the page URL contains <code>?term=...</code>, the app will automatically <b>uncheck</b> the upload option to avoid mixing sources.</li>",
-  "</ul></li>",
-  "<li><b>Select a domain</b> (tabs or dropdowns) to run FLCA + MajorSampling Top-20 nodes/edges.</li>",
-  "<li><b>Outputs</b>: tables (Sampled nodes/edges), plots, and SankeyMATIC text/link when available.</li>",
-  "</ol>",
-  "<p class='small-note'>Tip: If a tab shows 'no data yet', run Fetch PubMed first, then open the domain tab again.</p>",
-  "</div>"
-)))
+# ---- ReadMe (three practical workflows) ----
+output$readme_html <- shiny::renderUI({
+  shiny::tagList(
+    tags$div(
+      style = "line-height:1.55; max-width:980px;",
+      tags$h3("App4PubMedinR"),
+      tags$p(
+        tags$b("App4PubMedinR"),
+        " is an R/Shiny web application for PubMed-oriented bibliometric analysis, author collaboration profiling, and dominance visualization using the Absolute Advantage Coefficient (AAC) and FLCA–MajorSampling."
+      ),
+
+      tags$h4("Three practical workflows"),
+      tags$ol(
+        tags$li("Two-step PubMed fetching through a PubMed query or uploaded MEDLINE .txt file."),
+        tags$li("Two-step AMA/PubMed, Google Scholar, or NCKU Pure/Scopus extraction through upload or pasted normalized text."),
+        tags$li("Real-time visualization through a PubMed URL link, allowing users to generate visual outputs directly from a PubMed search URL.")
+      ),
+
+      tags$hr(),
+
+      tags$h4("1. Two-Step Fetch PubMed Workflow"),
+      tags$p("Use this workflow to retrieve PubMed records directly and generate bibliometric dashboards."),
+      tags$h5("Step 1. Enter a PubMed query or upload a MEDLINE .txt file"),
+      tags$p("Users can enter a PubMed query, for example:"),
+      tags$pre(tags$code("(Tsair-Wei Chien[Author]) AND (Taiwan[Affiliation])")),
+      tags$p("Alternatively, users can upload a PubMed MEDLINE .txt file downloaded from PubMed."),
+      tags$h5("Step 2. Click Fetch PubMed"),
+      tags$p("After clicking ", tags$b("Fetch PubMed"), ", the app retrieves or parses PubMed records and generates structured outputs, including:"),
+      tags$ul(
+        tags$li("Author collaboration networks"),
+        tags$li("First/last-author analysis"),
+        tags$li("Journal, country, institution, department, year, and MeSH summaries"),
+        tags$li("AAC-based dominance indicators"),
+        tags$li("Network, SSplot, Kano, Sankey, and map visualizations"),
+        tags$li("Downloadable CSV, PNG, HTML, and ZIP reports")
+      ),
+
+      tags$hr(),
+
+      tags$h4("2. Two-Step AMA / Google Scholar / NCKU Pure-Scopus Extraction Workflow"),
+      tags$p("Use this workflow when formatted reference records or author lists are already available."),
+      tags$h5("Step 1. Upload a reference file or paste records into the textarea box"),
+      tags$p("Users can paste or upload records from:"),
+      tags$ul(
+        tags$li("AMA/PubMed reference lists"),
+        tags$li("Google Scholar copied records"),
+        tags$li("NCKU Pure / Scopus normalized research-output records"),
+        tags$li("Semicolon-separated author lists")
+      ),
+      tags$p("Example NCKU Pure / Scopus normalized record:"),
+      tags$pre(tags$code(paste(
+        "Peer-assisted learning in critical care: a simulation-based approach for postgraduate medical training",
+        "Chiu, P. W., Chu, S. C., Yang, C. H., Lee, H. F., Hung, H. M. & Hsu, H. C., 2025, 於: Medical Education Online. 30, 1, 2497333.",
+        sep = "
+"
+      ))),
+      tags$p("Example semicolon-separated author list:"),
+      tags$pre(tags$code("Zeng J.; Ning X.; Lan L.; Peng W.; Zheng J.; Yang K.; Luo H.")),
+      tags$h5("Step 2. Select the parser and run extraction"),
+      tags$p("Select the appropriate parser checkbox, such as:"),
+      tags$ul(
+        tags$li(tags$b("Parse AMA/PubMed reference text")),
+        tags$li(tags$b("Parse Google Scholar normalized rows")),
+        tags$li(tags$b("Parse NCKU Pure / Scopus research output normalized records"))
+      ),
+      tags$p("Then click one of the extraction buttons:"),
+      tags$ul(
+        tags$li(tags$b("Run AMA journal extraction")),
+        tags$li(tags$b("Run AMA author/journal extraction")),
+        tags$li(tags$b("Run AMA author AAC (1st+Last only)"))
+      ),
+      tags$p("The app produces author/journal frequency tables, first/last-author networks, AAC summaries, h-index tables when citation counts are available, and downloadable results."),
+
+      tags$hr(),
+
+      tags$h4("3. Real-Time Visuals via PubMed URL Link"),
+      tags$p("App4PubMedinR can generate real-time visual analytics directly from a PubMed search URL."),
+      tags$h5("Example PubMed URL"),
+      tags$pre(tags$code("https://pubmed.ncbi.nlm.nih.gov/?term=%28Tsair-Wei+Chien%5BAuthor%5D%29+AND+%28Taiwan%5BAffiliation%5D%29")),
+      tags$p("Copy a PubMed search URL, paste it into the URL-link input box, and click ", tags$b("Fetch PubMed"), ". The app then retrieves the PubMed records and generates interactive visual outputs."),
+      tags$p(class = "small-note", "Tip: If a tab shows no data yet, run Fetch PubMed first, then reopen the relevant domain tab.")
+    )
+  )
+})
 
   # =========================
   # OUTPUT BINDINGS (restore)
